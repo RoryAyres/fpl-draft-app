@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPL Draft Live Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .loader { border-top-color: #3b82f6; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .active-tab { border-bottom: 2px solid #3b82f6; color: #3b82f6; font-weight: 600; }
+        .arrow-up { color: #10b981; } 
+        .arrow-down { color: #ef4444; } 
+    </style>
+</head>
+<body class="text-gray-800 h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-white shadow-sm z-10 sticky top-0">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-gray-900 flex items-center">
+                <svg class="w-6 h-6 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                FPL Draft Live
+            </h1>
+            <div class="text-sm font-medium bg-gray-100 px-3 py-1 rounded-full text-gray-600 flex items-center space-x-2">
+                <span>League: <span id="league-name-display">Loading...</span></span>
+                <span id="live-indicator" class="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden" title="Connected to Live Data"></span>
+            </div>
+        </div>
+        
+        <nav class="max-w-4xl mx-auto px-4 flex overflow-x-auto no-scrollbar border-b border-gray-200">
+            <button onclick="UI.switchTab('my-team')" id="tab-my-team" class="active-tab whitespace-nowrap py-3 px-4 text-sm font-medium transition-colors hover:text-blue-500">My Team</button>
+            <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-3 px-4 text-sm font-medium text-gray-500 transition-colors hover:text-blue-500">Live Fixtures</button>
+            <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-3 px-4 text-sm font-medium text-gray-500 transition-colors hover:text-blue-500">Live Table</button>
+        </nav>
+    </header>
+
+    <main class="flex-grow overflow-y-auto relative bg-gray-50">
+        <div id="loading-overlay" class="absolute inset-0 bg-gray-50 bg-opacity-90 flex flex-col items-center justify-center z-50">
+            <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+            <h2 class="text-center text-gray-600 text-sm font-medium" id="loading-text">Fetching live data...</h2>
+            <p class="text-xs text-gray-400 mt-2" id="loading-subtext"></p>
+        </div>
+
+        <div class="max-w-4xl mx-auto px-4 py-6 pb-20">
+            <!-- My Team Tab -->
+            <div id="content-my-team" class="tab-content hidden">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+                    <div class="bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-4 flex justify-between items-center text-white">
+                        <div>
+                            <h2 class="text-lg font-bold" id="my-team-name">Loading Team...</h2>
+                            <p class="text-blue-100 text-sm" id="my-manager-name">Manager</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-black" id="my-team-points">0</div>
+                            <div class="text-blue-100 text-xs uppercase tracking-wider font-semibold">GW Points</div>
+                        </div>
+                    </div>
+                    <div class="p-0">
+                        <div class="flex border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 p-3">
+                            <div class="w-10 text-center">Pos</div>
+                            <div class="flex-grow pl-2">Player</div>
+                            <div class="w-24 text-center">Opponent</div>
+                            <div class="w-16 text-right">Pts</div>
+                        </div>
+                        <div id="my-team-players-list" class="divide-y divide-gray-100"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fixtures Tab -->
+            <div id="content-fixtures" class="tab-content hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-gray-800">H2H Matchups</h2>
+                    <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-medium border border-green-200" id="gw-status">Gameweek Live</span>
+                </div>
+                <div id="fixtures-list" class="space-y-4"></div>
+            </div>
+
+            <!-- Live Table Tab -->
+            <div id="content-table" class="tab-content hidden">
+                <h2 class="text-lg font-bold text-gray-800 mb-4">Live League Standings</h2>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead id="live-table-head" class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                                <!-- Injected dynamically based on format -->
+                            </thead>
+                            <tbody id="live-table-body" class="divide-y divide-gray-200"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="error-message" class="hidden mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <strong class="font-bold">Error!</strong>
+                <span class="block sm:inline" id="error-text">Something went wrong.</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const CONFIG = {
+            LEAGUE_ID: 238, // The ID you provided
+            // Target the Vercel proxy. When local/in preview, this will fail and trigger mock fallback.
+            PROXY_URL: '/api/proxy?path=' 
+        };
+
+        // Centralized State Management
+        const State = {
+            isUsingMockData: false,
+            bootstrapStatic: null,
+            leagueDetails: null,
+            currentGW: null,
+            liveScores: null,
+            plFixtures: [],
+            entries: {}, 
+            teamEvents: {}, 
+            myTeamId: null, 
+            teamsData: {},
+            
+            getStaticPlayer: (id) => State.bootstrapStatic?.elements.find(e => e.id === id) || {},
+            getLivePoints: (id) => State.liveScores?.elements[id]?.stats?.total_points || 0,
+            getLiveMinutes: (id) => State.liveScores?.elements[id]?.stats?.minutes || 0,
+        };
+
+        const UI = {
+            showLoading: (text, subtext = '') => {
+                document.getElementById('loading-overlay').classList.remove('hidden');
+                if (text) document.getElementById('loading-text').innerText = text;
+                document.getElementById('loading-subtext').innerText = subtext;
+            },
+            hideLoading: () => document.getElementById('loading-overlay').classList.add('hidden'),
+            showError: (msg) => {
+                document.getElementById('error-text').innerText = msg;
+                document.getElementById('error-message').classList.remove('hidden');
+                UI.hideLoading();
+            },
+            switchTab: (tabId) => {
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('nav button').forEach(el => {
+                    el.classList.remove('active-tab', 'text-blue-500', 'font-semibold');
+                    el.classList.add('text-gray-500');
+                });
+                document.getElementById(`content-${tabId}`).classList.remove('hidden');
+                const activeBtn = document.getElementById(`tab-${tabId}`);
+                activeBtn.classList.add('active-tab', 'text-blue-500');
+                activeBtn.classList.remove('text-gray-500');
+                Render.currentTab();
+            },
+            getPosClass: (posId) => {
+                const map = { 1: 'bg-yellow-100 text-yellow-800 border-yellow-200', 2: 'bg-blue-100 text-blue-800 border-blue-200', 3: 'bg-green-100 text-green-800 border-green-200', 4: 'bg-red-100 text-red-800 border-red-200' };
+                return map[posId] || 'bg-gray-100 text-gray-800 border-gray-200';
+            },
+            getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK')
+        };
+
+        const API = {
+            fetchVercelProxy: async (endpoint) => {
+                try {
+                    const response = await fetch(`${CONFIG.PROXY_URL}${encodeURIComponent(endpoint)}`);
+                    if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    throw new Error('Vercel proxy unreachable');
+                }
+            },
+            
+            init: async () => {
+                try {
+                    UI.showLoading('Connecting to Premier League API...', 'Attempting to fetch live data via Vercel proxy.');
+                    
+                    try {
+                        // Attempt to load REAL data via proxy
+                        State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
+                        State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
+                        
+                        const currentEvent = State.bootstrapStatic.events.find(e => e.is_current) || State.bootstrapStatic.events.find(e => e.is_next);
+                        State.currentGW = currentEvent.id;
+
+                        State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
+                        // Note: Draft API doesn't cleanly expose PL fixtures without authenticating as a standard FPL user, 
+                        // so in a production build you might need a secondary open API for PL fixtures. 
+                        // We will set this to empty array for now when hitting real API to prevent crashes.
+                        State.plFixtures = []; 
+
+                        // Fetch individual teams
+                        for (const entry of State.leagueDetails.league_entries) {
+                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
+                            State.teamEvents[entry.entry_id] = teamData;
+                        }
+
+                        document.getElementById('live-indicator').classList.remove('hidden'); // Show green/red dot if live data succeeds
+
+                    } catch (proxyError) {
+                        // FALLBACK: If proxy fails (e.g., inside this Code Preview window), load Mock Data
+                        console.warn(proxyError.message + " - Falling back to local Mock Data.");
+                        State.isUsingMockData = true;
+                        UI.showLoading('Proxy not found. Loading Mock Data...', 'This is expected in the preview window.');
+                        await new Promise(r => setTimeout(r, 800)); // Simulate network
+                        
+                        State.bootstrapStatic = MockData.getBootstrap();
+                        State.leagueDetails = MockData.getLeague();
+                        State.currentGW = 1;
+                        State.plFixtures = MockData.getPLFixtures();
+                        State.liveScores = MockData.getLiveScores();
+                        
+                        State.leagueDetails.league_entries.forEach(entry => {
+                            State.teamEvents[entry.entry_id] = MockData.getTeamEvent(entry.entry_id);
+                        });
+                    }
+
+                    // Process Data (Regardless of source)
+                    State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
+                    document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
+                    
+                    State.leagueDetails.league_entries.forEach(entry => {
+                        State.entries[entry.entry_id] = { ...entry, livePoints: 0 };
+                    });
+                    
+                    State.myTeamId = State.leagueDetails.league_entries[0].entry_id; // Default to first team
+
+                    // Calculate Points
+                    State.leagueDetails.league_entries.forEach(entry => {
+                        const lineup = State.teamEvents[entry.entry_id];
+                        let total = 0;
+                        if(lineup && lineup.picks) {
+                            lineup.picks.forEach(p => { if (p.position <= 11) total += State.getLivePoints(p.element); });
+                        }
+                        State.entries[entry.entry_id].livePoints = total;
+                    });
+
+                    UI.hideLoading();
+                    UI.switchTab('my-team');
+                    
+                } catch (error) {
+                    UI.showError("Failed to initialize app data. Check console for details.");
+                    console.error(error);
+                }
+            }
+        };
+
+        const Render = {
+            currentTab: () => {
+                if (!State.leagueDetails) return;
+                if (!document.getElementById('content-my-team').classList.contains('hidden')) Render.myTeam();
+                if (!document.getElementById('content-fixtures').classList.contains('hidden')) Render.fixtures();
+                if (!document.getElementById('content-table').classList.contains('hidden')) Render.liveTable();
+            },
+            
+            getFixtureStatus: (teamId) => {
+                const fixture = State.plFixtures.find(f => f.team_h === teamId || f.team_a === teamId);
+                if (!fixture) return { opponent: 'TBD', status: 'Soon', isHome: null, colorClass: 'text-gray-500 bg-gray-100 border-gray-200' };
+                const isHome = fixture.team_h === teamId;
+                const oppTeam = State.teamsData[isHome ? fixture.team_a : fixture.team_h];
+                const opponentName = oppTeam ? oppTeam.short_name : 'UNK';
+                
+                let status = 'Soon', colorClass = 'text-gray-500 bg-gray-100 border-gray-200';
+                if (fixture.finished) { status = 'FT'; colorClass = 'text-gray-600 bg-gray-200 border-gray-300'; } 
+                else if (fixture.started) { status = 'Live'; colorClass = 'text-green-700 bg-green-100 border-green-300 animate-pulse'; }
+                return { opponent: opponentName, isHome, status, colorClass };
+            },
+
+            myTeam: () => {
+                const teamInfo = State.entries[State.myTeamId];
+                const lineup = State.teamEvents[State.myTeamId];
+                if (!teamInfo || !lineup) return;
+
+                document.getElementById('my-team-name').innerText = teamInfo.entry_name;
+                document.getElementById('my-manager-name').innerText = `${teamInfo.player_first_name} ${teamInfo.player_last_name}`;
+                document.getElementById('my-team-points').innerText = teamInfo.livePoints;
+
+                const listEl = document.getElementById('my-team-players-list');
+                listEl.innerHTML = '';
+
+                // Combine picks with static data, then sort by element_type (position)
+                const buildPlayerRow = (pick, isBench) => {
+                    const pStat = State.getStaticPlayer(pick.element);
+                    const pts = State.getLivePoints(pick.element);
+                    const mins = State.getLiveMinutes(pick.element);
+                    const t = State.teamsData[pStat.team];
+                    const fix = Render.getFixtureStatus(pStat.team);
+                    
+                    const minBadge = (fix.status === 'Live' || fix.status === 'FT') 
+                        ? `<span class="ml-1.5 px-1 py-0.5 rounded ${isBench ? 'bg-gray-200 border-gray-300' : 'bg-gray-100 border-gray-200'} text-gray-500 font-medium text-[9px] border">${mins}'</span>` 
+                        : '';
+                    
+                    return `
+                        <div class="flex items-center p-3 ${isBench ? 'opacity-60 bg-gray-50' : 'hover:bg-gray-50 transition-colors'}">
+                            <div class="w-10 text-center"><span class="text-[10px] font-bold px-1.5 py-0.5 rounded border ${UI.getPosClass(pStat.element_type)}">${UI.getPosName(pStat.element_type)}</span></div>
+                            <div class="flex-grow pl-2 flex flex-col justify-center">
+                                <span class="text-sm font-semibold text-gray-900">${pStat.web_name || 'Unknown'}</span>
+                                <div class="flex items-center text-xs text-gray-500 mt-0.5"><span>${t ? t.short_name : ''}</span>${minBadge}</div>
+                            </div>
+                            <div class="w-24 text-center text-xs flex flex-col items-center space-y-1">
+                                <span class="font-medium ${isBench ? 'text-gray-500' : 'text-gray-700'}">${fix.opponent} ${fix.isHome ? '(H)' : '(A)'}</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded border ${fix.colorClass}">${fix.status}</span>
+                            </div>
+                            <div class="w-16 text-right"><span class="text-lg font-bold ${isBench ? 'text-gray-500 text-md' : (pts >= 6 ? 'text-green-600' : pts <= 0 ? 'text-red-500' : 'text-gray-800')}">${pts}</span></div>
+                        </div>`;
+                };
+
+                const starters = lineup.picks.filter(p => p.position <= 11)
+                    .map(p => ({ pick: p, stat: State.getStaticPlayer(p.element) }))
+                    .sort((a, b) => a.stat.element_type - b.stat.element_type);
+                
+                starters.forEach(item => listEl.innerHTML += buildPlayerRow(item.pick, false));
+
+                listEl.innerHTML += `<div class="bg-gray-100 p-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider border-y border-gray-200 mt-2">Bench</div>`;
+
+                const bench = lineup.picks.filter(p => p.position > 11).sort((a, b) => a.position - b.position);
+                bench.forEach(pick => listEl.innerHTML += buildPlayerRow(pick, true));
+            },
+
+            fixtures: () => {
+                const listEl = document.getElementById('fixtures-list');
+                listEl.innerHTML = '';
+                const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event === State.currentGW) : [];
+
+                if (h2hMatches.length === 0) {
+                    listEl.innerHTML = '<div class="text-center p-6 text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200">No H2H fixtures found (Classic league or missing data).</div>';
+                    return;
+                }
+
+                h2hMatches.forEach(match => {
+                    const t1 = State.entries[match.league_entry_1], t2 = State.entries[match.league_entry_2];
+                    if (!t1 || !t2) return;
+                    
+                    listEl.innerHTML += `
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div class="flex items-stretch h-20">
+                                <div class="flex-1 flex flex-col justify-center px-4 ${t1.livePoints > t2.livePoints ? 'bg-blue-50/50' : ''}">
+                                    <div class="text-xs text-gray-500 truncate">${t1.player_first_name}</div>
+                                    <div class="text-sm sm:text-base truncate ${t1.livePoints > t2.livePoints ? 'font-bold text-gray-900' : 'text-gray-700'}">${t1.entry_name}</div>
+                                </div>
+                                <div class="w-24 flex items-center justify-center bg-gray-50 border-x border-gray-100">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-xl ${t1.livePoints > t2.livePoints ? 'text-blue-600 font-black' : 'text-gray-800 font-bold'}">${t1.livePoints}</span>
+                                        <span class="text-gray-300 text-sm">-</span>
+                                        <span class="text-xl ${t2.livePoints > t1.livePoints ? 'text-blue-600 font-black' : 'text-gray-800 font-bold'}">${t2.livePoints}</span>
+                                    </div>
+                                </div>
+                                <div class="flex-1 flex flex-col justify-center px-4 text-right ${t2.livePoints > t1.livePoints ? 'bg-blue-50/50' : ''}">
+                                    <div class="text-xs text-gray-500 truncate">${t2.player_first_name}</div>
+                                    <div class="text-sm sm:text-base truncate ${t2.livePoints > t1.livePoints ? 'font-bold text-gray-900' : 'text-gray-700'}">${t2.entry_name}</div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+            },
+
+            liveTable: () => {
+                const tbody = document.getElementById('live-table-body');
+                const thead = document.getElementById('live-table-head');
+                tbody.innerHTML = '';
+
+                const matches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event === State.currentGW) : [];
+                const isH2H = matches.length > 0;
+                
+                if (isH2H) {
+                    thead.innerHTML = `<tr><th class="px-4 py-3 text-center w-8">#</th><th class="px-2 py-3 text-center w-6"></th><th class="px-4 py-3">Team</th><th class="px-4 py-3 text-center">Live W-D-L</th><th class="px-4 py-3 text-center">FPL Pts</th><th class="px-4 py-3 text-center bg-blue-50 font-bold text-blue-700">H2H Pts</th></tr>`;
+                } else {
+                    thead.innerHTML = `<tr><th class="px-4 py-3 text-center w-8">#</th><th class="px-2 py-3 text-center w-6"></th><th class="px-4 py-3">Team</th><th class="px-4 py-3 text-center">Total Pts</th><th class="px-4 py-3 text-center bg-blue-50 font-bold text-blue-700">Live Pts</th></tr>`;
+                }
+
+                let liveH2H = {};
+                matches.forEach(m => {
+                    const p1 = State.entries[m.league_entry_1]?.livePoints || 0;
+                    const p2 = State.entries[m.league_entry_2]?.livePoints || 0;
+                    
+                    liveH2H[m.league_entry_1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
+                    liveH2H[m.league_entry_2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p1===p2?1:0, l: p2<p1?1:0 };
+                });
+
+                let tableData = (State.leagueDetails.standings || []).map(s => {
+                    const h2hUpdate = liveH2H[s.league_entry] || { pts: 0, w: 0, d: 0, l: 0 };
+                    const livePts = State.entries[s.league_entry]?.livePoints || 0;
+                    return {
+                        ...s,
+                        entryDetails: State.entries[s.league_entry],
+                        liveFPLPts: livePts,
+                        projectedH2HPts: s.total + h2hUpdate.pts,
+                        projectedTotalFPL: (s.points_for || s.total || 0) + livePts,
+                        projectedW: s.matches_won + h2hUpdate.w,
+                        projectedD: s.matches_drawn + h2hUpdate.d,
+                        projectedL: s.matches_lost + h2hUpdate.l
+                    };
+                });
+
+                tableData.sort((a, b) => isH2H ? (b.projectedH2HPts - a.projectedH2HPts || b.projectedTotalFPL - a.projectedTotalFPL) : (b.projectedTotalFPL - a.projectedTotalFPL));
+
+                tableData.forEach((team, idx) => {
+                    const currentRank = idx + 1;
+                    const prevRank = team.rank;
+                    let rankIcon = '<svg class="w-4 h-4 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
+                    if (currentRank < prevRank) rankIcon = '<svg class="w-4 h-4 mx-auto arrow-up" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>';
+                    else if (currentRank > prevRank) rankIcon = '<svg class="w-4 h-4 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
+
+                    const rowClass = team.league_entry === State.myTeamId ? 'bg-blue-50/30' : 'bg-white';
+                    
+                    if(isH2H) {
+                        tbody.innerHTML += `
+                            <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
+                                <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
+                                <td class="px-2 py-4 text-center">${rankIcon}</td>
+                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name}</div></td>
+                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>
+                                <td class="px-4 py-4 text-center text-sm font-semibold text-gray-700">${team.projectedTotalFPL}</td>
+                                <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.projectedH2HPts}</td>
+                            </tr>`;
+                    } else {
+                         tbody.innerHTML += `
+                            <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
+                                <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
+                                <td class="px-2 py-4 text-center">${rankIcon}</td>
+                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name}</div></td>
+                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.total}</td>
+                                <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.liveFPLPts}</td>
+                            </tr>`;
+                    }
+                });
+            }
+        };
+
+        const MockData = {
+            getBootstrap: () => ({
+                events: [{ id: 1, is_current: true }],
+                teams: [ { id: 1, name: "Arsenal", short_name: "ARS" }, { id: 2, name: "Aston Villa", short_name: "AVL" }, { id: 11, name: "Liverpool", short_name: "LIV" }, { id: 13, name: "Man City", short_name: "MCI" }, { id: 14, name: "Man Utd", short_name: "MUN" }, { id: 17, name: "Spurs", short_name: "TOT" } ],
+                elements: [ { id: 1, web_name: "Raya", element_type: 1, team: 1 }, { id: 2, web_name: "Saliba", element_type: 2, team: 1 }, { id: 3, web_name: "Saka", element_type: 3, team: 1 }, { id: 4, web_name: "Watkins", element_type: 4, team: 2 }, { id: 6, web_name: "Salah", element_type: 3, team: 11 }, { id: 7, web_name: "Haaland", element_type: 4, team: 13 }, { id: 8, web_name: "Foden", element_type: 3, team: 13 }, { id: 9, web_name: "Fernandes", element_type: 3, team: 14 }, { id: 10, web_name: "Trent", element_type: 2, team: 11 }, { id: 11, web_name: "Porro", element_type: 2, team: 17 }, { id: 12, web_name: "Gabriel", element_type: 2, team: 1 }, { id: 13, web_name: "Son", element_type: 3, team: 17 }, { id: 14, web_name: "Isak", element_type: 4, team: 14 }, { id: 15, web_name: "Palmer", element_type: 3, team: 11 }, { id: 16, web_name: "Pickford", element_type: 1, team: 2 } ]
+            }),
+            getLeague: () => ({
+                league: { name: "Mock Draft League (Fallback Mode)" },
+                league_entries: [ { entry_id: 101, entry_name: "Saka Potatoes", player_first_name: "Alex", player_last_name: "S" }, { entry_id: 102, entry_name: "Haaland Oates", player_first_name: "Jamie", player_last_name: "D" }, { entry_id: 103, entry_name: "Expected Toulouse", player_first_name: "Chris", player_last_name: "L" }, { entry_id: 104, entry_name: "Lads on Toure", player_first_name: "Sam", player_last_name: "J" } ],
+                standings: [ { league_entry: 102, rank: 1, matches_won: 5, matches_drawn: 0, matches_lost: 1, total: 15, points_for: 300 }, { league_entry: 101, rank: 2, matches_won: 4, matches_drawn: 1, matches_lost: 1, total: 13, points_for: 290 }, { league_entry: 104, rank: 3, matches_won: 3, matches_drawn: 0, matches_lost: 3, total: 9, points_for: 250 }, { league_entry: 103, rank: 4, matches_won: 1, matches_drawn: 0, matches_lost: 5, total: 3, points_for: 200 } ],
+                matches: [ { event: 1, league_entry_1: 101, league_entry_2: 102 }, { event: 1, league_entry_1: 103, league_entry_2: 104 } ]
+            }),
+            getPLFixtures: () => ([ { id: 1, event: 1, team_h: 1, team_a: 2, finished: true, started: true }, { id: 2, event: 1, team_h: 11, team_a: 13, finished: false, started: true }, { id: 3, event: 1, team_h: 14, team_a: 17, finished: false, started: false } ]),
+            getTeamEvent: (id) => {
+                const maps = { 101: [1, 2, 10, 11, 3, 6, 13, 4, 7, 14, 15, 16, 12, 8, 5], 102: [16, 12, 2, 10, 8, 9, 15, 3, 5, 4, 7, 1, 11, 6, 14] };
+                return { picks: (maps[id] || maps[101]).map((el, idx) => ({ element: el, position: idx + 1 })) };
+            },
+            getLiveScores: () => {
+                const elements = {};
+                for(let i=1; i<=16; i++) elements[i] = { stats: { total_points: Math.floor(Math.random()*12), minutes: Math.random() > 0.3 ? 90 : 45 } };
+                elements[7].stats = { total_points: 17, minutes: 90 }; return { elements };
+            }
+        };
+
+        // Bootstrap App
+        window.onload = API.init;
+    </script>
+</body>
+</html>
