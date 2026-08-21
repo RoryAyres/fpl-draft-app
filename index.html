@@ -105,12 +105,10 @@
 
     <script>
         const CONFIG = {
-            LEAGUE_ID: 238, // The ID you provided
-            // Target the Vercel proxy. When local/in preview, this will fail and trigger mock fallback.
+            LEAGUE_ID: 238,
             PROXY_URL: '/api/proxy?path=' 
         };
 
-        // Centralized State Management
         const State = {
             isUsingMockData: false,
             bootstrapStatic: null,
@@ -161,13 +159,9 @@
 
         const API = {
             fetchVercelProxy: async (endpoint) => {
-                try {
-                    const response = await fetch(`${CONFIG.PROXY_URL}${encodeURIComponent(endpoint)}`);
-                    if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
-                    return await response.json();
-                } catch (error) {
-                    throw new Error('Vercel proxy unreachable');
-                }
+                const response = await fetch(`${CONFIG.PROXY_URL}${encodeURIComponent(endpoint)}`);
+                if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
+                return await response.json();
             },
             
             init: async () => {
@@ -175,33 +169,31 @@
                     UI.showLoading('Connecting to Premier League API...', 'Attempting to fetch live data via Vercel proxy.');
                     
                     try {
-                        // Attempt to load REAL data via proxy
                         State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
                         State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
                         
                         const currentEvent = State.bootstrapStatic.events.find(e => e.is_current) || State.bootstrapStatic.events.find(e => e.is_next);
-                        State.currentGW = currentEvent.id;
+                        State.currentGW = currentEvent ? currentEvent.id : 1;
 
                         State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
-                        // Note: Draft API doesn't cleanly expose PL fixtures without authenticating as a standard FPL user, 
-                        // so in a production build you might need a secondary open API for PL fixtures. 
-                        // We will set this to empty array for now when hitting real API to prevent crashes.
                         State.plFixtures = []; 
 
-                        // Fetch individual teams
                         for (const entry of State.leagueDetails.league_entries) {
-                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
-                            State.teamEvents[entry.entry_id] = teamData;
+                            try {
+                                const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
+                                State.teamEvents[entry.entry_id] = teamData;
+                            } catch (err) {
+                                console.warn(`Could not load picks for entry ${entry.entry_id}`);
+                            }
                         }
 
-                        document.getElementById('live-indicator').classList.remove('hidden'); // Show green/red dot if live data succeeds
+                        document.getElementById('live-indicator').classList.remove('hidden');
 
                     } catch (proxyError) {
-                        // FALLBACK: If proxy fails (e.g., inside this Code Preview window), load Mock Data
                         console.warn(proxyError.message + " - Falling back to local Mock Data.");
                         State.isUsingMockData = true;
-                        UI.showLoading('Proxy not found. Loading Mock Data...', 'This is expected in the preview window.');
-                        await new Promise(r => setTimeout(r, 800)); // Simulate network
+                        UI.showLoading('Proxy not found or offline. Loading Mock Data...', 'Deploy to Vercel for live data.');
+                        await new Promise(r => setTimeout(r, 800));
                         
                         State.bootstrapStatic = MockData.getBootstrap();
                         State.leagueDetails = MockData.getLeague();
@@ -214,7 +206,6 @@
                         });
                     }
 
-                    // Process Data (Regardless of source)
                     State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
                     document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
                     
@@ -222,9 +213,8 @@
                         State.entries[entry.entry_id] = { ...entry, livePoints: 0 };
                     });
                     
-                    State.myTeamId = State.leagueDetails.league_entries[0].entry_id; // Default to first team
+                    State.myTeamId = State.leagueDetails.league_entries[0]?.entry_id;
 
-                    // Calculate Points
                     State.leagueDetails.league_entries.forEach(entry => {
                         const lineup = State.teamEvents[entry.entry_id];
                         let total = 0;
@@ -277,7 +267,6 @@
                 const listEl = document.getElementById('my-team-players-list');
                 listEl.innerHTML = '';
 
-                // Combine picks with static data, then sort by element_type (position)
                 const buildPlayerRow = (pick, isBench) => {
                     const pStat = State.getStaticPlayer(pick.element);
                     const pts = State.getLivePoints(pick.element);
@@ -322,7 +311,7 @@
                 const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event === State.currentGW) : [];
 
                 if (h2hMatches.length === 0) {
-                    listEl.innerHTML = '<div class="text-center p-6 text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200">No H2H fixtures found (Classic league or missing data).</div>';
+                    listEl.innerHTML = '<div class="text-center p-6 text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200">No H2H fixtures found for this gameweek (Classic league or missing schedule).</div>';
                     return;
                 }
 
@@ -427,30 +416,13 @@
         };
 
         const MockData = {
-            getBootstrap: () => ({
-                events: [{ id: 1, is_current: true }],
-                teams: [ { id: 1, name: "Arsenal", short_name: "ARS" }, { id: 2, name: "Aston Villa", short_name: "AVL" }, { id: 11, name: "Liverpool", short_name: "LIV" }, { id: 13, name: "Man City", short_name: "MCI" }, { id: 14, name: "Man Utd", short_name: "MUN" }, { id: 17, name: "Spurs", short_name: "TOT" } ],
-                elements: [ { id: 1, web_name: "Raya", element_type: 1, team: 1 }, { id: 2, web_name: "Saliba", element_type: 2, team: 1 }, { id: 3, web_name: "Saka", element_type: 3, team: 1 }, { id: 4, web_name: "Watkins", element_type: 4, team: 2 }, { id: 6, web_name: "Salah", element_type: 3, team: 11 }, { id: 7, web_name: "Haaland", element_type: 4, team: 13 }, { id: 8, web_name: "Foden", element_type: 3, team: 13 }, { id: 9, web_name: "Fernandes", element_type: 3, team: 14 }, { id: 10, web_name: "Trent", element_type: 2, team: 11 }, { id: 11, web_name: "Porro", element_type: 2, team: 17 }, { id: 12, web_name: "Gabriel", element_type: 2, team: 1 }, { id: 13, web_name: "Son", element_type: 3, team: 17 }, { id: 14, web_name: "Isak", element_type: 4, team: 14 }, { id: 15, web_name: "Palmer", element_type: 3, team: 11 }, { id: 16, web_name: "Pickford", element_type: 1, team: 2 } ]
-            }),
-            getLeague: () => ({
-                league: { name: "Mock Draft League (Fallback Mode)" },
-                league_entries: [ { entry_id: 101, entry_name: "Saka Potatoes", player_first_name: "Alex", player_last_name: "S" }, { entry_id: 102, entry_name: "Haaland Oates", player_first_name: "Jamie", player_last_name: "D" }, { entry_id: 103, entry_name: "Expected Toulouse", player_first_name: "Chris", player_last_name: "L" }, { entry_id: 104, entry_name: "Lads on Toure", player_first_name: "Sam", player_last_name: "J" } ],
-                standings: [ { league_entry: 102, rank: 1, matches_won: 5, matches_drawn: 0, matches_lost: 1, total: 15, points_for: 300 }, { league_entry: 101, rank: 2, matches_won: 4, matches_drawn: 1, matches_lost: 1, total: 13, points_for: 290 }, { league_entry: 104, rank: 3, matches_won: 3, matches_drawn: 0, matches_lost: 3, total: 9, points_for: 250 }, { league_entry: 103, rank: 4, matches_won: 1, matches_drawn: 0, matches_lost: 5, total: 3, points_for: 200 } ],
-                matches: [ { event: 1, league_entry_1: 101, league_entry_2: 102 }, { event: 1, league_entry_1: 103, league_entry_2: 104 } ]
-            }),
-            getPLFixtures: () => ([ { id: 1, event: 1, team_h: 1, team_a: 2, finished: true, started: true }, { id: 2, event: 1, team_h: 11, team_a: 13, finished: false, started: true }, { id: 3, event: 1, team_h: 14, team_a: 17, finished: false, started: false } ]),
-            getTeamEvent: (id) => {
-                const maps = { 101: [1, 2, 10, 11, 3, 6, 13, 4, 7, 14, 15, 16, 12, 8, 5], 102: [16, 12, 2, 10, 8, 9, 15, 3, 5, 4, 7, 1, 11, 6, 14] };
-                return { picks: (maps[id] || maps[101]).map((el, idx) => ({ element: el, position: idx + 1 })) };
-            },
-            getLiveScores: () => {
-                const elements = {};
-                for(let i=1; i<=16; i++) elements[i] = { stats: { total_points: Math.floor(Math.random()*12), minutes: Math.random() > 0.3 ? 90 : 45 } };
-                elements[7].stats = { total_points: 17, minutes: 90 }; return { elements };
-            }
+            getBootstrap: () => ({ events: [{ id: 1, is_current: true }], teams: [], elements: [] }),
+            getLeague: () => ({ league: { name: "Draft League 238" }, league_entries: [], standings: [], matches: [] }),
+            getPLFixtures: () => ([]),
+            getTeamEvent: (id) => ({ picks: [] }),
+            getLiveScores: () => ({ elements: {} })
         };
 
-        // Bootstrap App
         window.onload = API.init;
     </script>
 </body>
