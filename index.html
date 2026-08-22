@@ -163,14 +163,21 @@
                     
                     const response = await fetch(fetchUrl);
                     
-                    if (response.status === 404) throw new Error("PROXY_NOT_FOUND");
-                    if (response.status === 403) throw new Error("CLOUDFLARE_BLOCKED");
-                    if (!response.ok) throw new Error(`API error: ${response.status}`);
+                    if (!response.ok) {
+                        let errBody = '';
+                        try {
+                            const errJson = await response.json();
+                            errBody = errJson.error || JSON.stringify(errJson);
+                        } catch(e) {
+                            errBody = await response.text();
+                        }
+                        throw new Error(`Endpoint '${endpoint}' failed with status ${response.status}. Details: ${errBody.substring(0, 100)}`);
+                    }
                     
                     return await response.json();
                 } catch (error) {
                     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                        throw new Error("NETWORK_ERROR");
+                        throw new Error("NETWORK_ERROR: Browser blocked the request or proxy is offline.");
                     }
                     throw error;
                 }
@@ -206,13 +213,9 @@
                     } catch (proxyError) {
                         console.error("[FRONTEND] Proxy fetch failed. Reason:", proxyError);
                         
-                        let errorMessage = "Failed to load live data.";
-                        if (proxyError.message === "PROXY_NOT_FOUND") errorMessage = "Proxy is returning a 404. Check Vercel deployment.";
-                        else if (proxyError.message === "CLOUDFLARE_BLOCKED") errorMessage = "FPL Cloudflare is currently blocking your Vercel server (403).";
+                        UI.showError(`Error Fetching Data: ${proxyError.message}`);
                         
-                        UI.showError(`${errorMessage} Falling back to mock data for preview.`);
-                        
-                        await new Promise(r => setTimeout(r, 2000));
+                        await new Promise(r => setTimeout(r, 4000));
                         
                         State.isUsingMockData = true;
                         UI.showLoading('Loading Mock Data...', 'Previewing UI without live connection.');
