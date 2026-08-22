@@ -27,19 +27,16 @@
         .active-tab { border-bottom: 2px solid #10b981; color: #10b981; font-weight: 700; }
         .arrow-up { color: #10b981; } 
         .arrow-down { color: #ef4444; } 
-        /* Pull to refresh indicator animation */
         #ptr-element { transition: transform 0.2s ease, opacity 0.2s ease; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 h-screen flex flex-col overflow-hidden select-none">
 
-    <!-- Pull to Refresh Visual Indicator -->
     <div id="ptr-element" class="absolute top-0 inset-x-0 h-14 flex items-center justify-center bg-gray-800 text-gray-400 text-xs font-semibold z-50 transform -translate-y-full opacity-0 shadow-inner">
         <svg id="ptr-icon" class="w-5 h-5 mr-2 animate-spin text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
         <span id="ptr-text">Pull down to refresh...</span>
     </div>
 
-    <!-- Header -->
     <header class="bg-gray-800/90 backdrop-blur-md border-b border-gray-700/60 z-20 sticky top-0">
         <div class="max-w-4xl mx-auto px-3 py-2.5 flex justify-between items-center">
             <h1 class="text-base font-extrabold text-white tracking-tight flex items-center">
@@ -48,14 +45,13 @@
             </h1>
             
             <div class="flex items-center space-x-2">
-                <!-- Manual Refresh Button -->
                 <button onclick="API.refreshData(true)" class="p-1.5 bg-gray-700/50 hover:bg-gray-700 rounded-full text-gray-300 hover:text-white transition-colors active:scale-95" title="Refresh Data">
                     <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 </button>
 
-                <!-- League Status Pill -->
                 <div class="text-xs font-medium bg-gray-900/60 px-2.5 py-1 rounded-full text-gray-300 border border-gray-700/50 flex items-center space-x-1.5">
                     <span class="truncate max-w-[100px]" id="league-name-display">Loading...</span>
+                    <span id="header-gw-status" class="border-l border-gray-700 pl-1.5 text-emerald-400 font-bold hidden"></span>
                     <span id="live-indicator" class="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden" title="Connected"></span>
                     <span id="mock-indicator" class="w-2 h-2 rounded-full bg-amber-400 hidden" title="Mock Mode"></span>
                 </div>
@@ -69,7 +65,6 @@
         </nav>
     </header>
 
-    <!-- Main Content -->
     <main id="main-scroll-container" class="flex-grow overflow-y-auto relative bg-gray-900 pb-16">
         <div id="loading-overlay" class="absolute inset-0 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center z-50">
             <div class="loader ease-linear rounded-full border-3 border-t-3 border-gray-700 h-10 w-10 mb-3"></div>
@@ -79,10 +74,8 @@
 
         <div class="max-w-4xl mx-auto px-2.5 py-3">
             
-            <!-- My Team Tab Content -->
             <div id="content-my-team" class="tab-content hidden space-y-3">
                 <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
-                    <!-- Compact Team Header -->
                     <div class="bg-gradient-to-r from-emerald-800 to-emerald-600 px-3.5 py-2.5 flex justify-between items-center text-white">
                         <div class="min-w-0 flex-1 mr-2">
                             <div class="relative inline-flex items-center max-w-full">
@@ -101,7 +94,6 @@
                         </div>
                     </div>
 
-                    <!-- Condensed Player List -->
                     <div class="p-0">
                         <div class="flex border-b border-gray-700/50 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-800/50 px-3 py-1.5">
                             <div class="w-8 text-center">Pos</div>
@@ -114,16 +106,10 @@
                 </div>
             </div>
 
-            <!-- Fixtures Tab Content -->
             <div id="content-fixtures" class="tab-content hidden space-y-2.5">
-                <div class="flex justify-between items-center px-1 mb-1">
-                    <h2 class="text-sm font-bold text-gray-200">H2H Matchups</h2>
-                    <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-semibold border border-emerald-700/50" id="gw-status">Gameweek Live</span>
-                </div>
-                <div id="fixtures-list" class="space-y-2"></div>
+                <div id="fixtures-list" class="space-y-2 mt-1"></div>
             </div>
 
-            <!-- Live Table Tab Content -->
             <div id="content-table" class="tab-content hidden space-y-2.5">
                 <h2 class="text-sm font-bold text-gray-200 px-1 mb-1">Live Standings</h2>
                 <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
@@ -137,7 +123,6 @@
                 </div>
             </div>
             
-            <!-- Error Banner -->
             <div id="error-message" class="hidden mt-3 bg-red-900/40 border border-red-700/60 text-red-300 px-3 py-2.5 rounded-lg text-xs relative shadow-lg" role="alert">
                 <strong class="font-bold">Notice:</strong>
                 <span class="block sm:inline" id="error-text">Something went wrong.</span>
@@ -205,7 +190,6 @@
             },
             getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK'),
             
-            // Generate stat event emojis based on stats breakdown
             formatStatBadges: (stats) => {
                 if (!stats) return '';
                 let badges = [];
@@ -219,7 +203,7 @@
                 const penaltiesMissed = stats.penalties_missed || 0;
 
                 for(let i=0; i<goals; i++) badges.push('⚽');
-                for(let i=0; i<assists; i++) badges.push('🎯');
+                for(let i=0; i<assists; i++) badges.push('🅰️');
                 for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
                 for(let i=0; i<penaltiesSaved; i++) badges.push('🧤');
                 for(let i=0; i<yellowCards; i++) badges.push('🟨');
@@ -341,6 +325,10 @@
                     State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
                     document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
                     
+                    const headerGwEl = document.getElementById('header-gw-status');
+                    headerGwEl.innerText = `GW ${State.currentGW}`;
+                    headerGwEl.classList.remove('hidden');
+                    
                     State.leagueDetails.league_entries.forEach(entry => {
                         State.entries[entry.id] = { ...entry, livePoints: 0 };
                     });
@@ -393,12 +381,9 @@
                 const opponentName = oppTeam ? oppTeam.short_name : 'UNK';
                 
                 let status = 'Soon', colorClass = 'text-gray-400 bg-gray-800 border-gray-700';
-                if (fixture.finished || fixture.started === false && (fixture.minutes > 90 || fixture.code && fixture.finished)) { 
+                if (fixture.finished || fixture.finished_provisional || (fixture.started && fixture.minutes >= 90)) { 
                     status = 'FT'; colorClass = 'text-gray-300 bg-gray-700/60 border-gray-600'; 
                 } 
-                else if (fixture.finished) { 
-                    status = 'FT'; colorClass = 'text-gray-300 bg-gray-700/60 border-gray-600'; 
-                }
                 else if (fixture.started) { 
                     status = 'Live'; colorClass = 'text-emerald-400 bg-emerald-950/80 border-emerald-700/60 animate-pulse'; 
                 }
@@ -528,7 +513,7 @@
                     const p2 = State.entries[entry2]?.livePoints || 0;
                     
                     liveH2H[entry1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
-                    liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p2===p2?1:0, l: p2<p1?1:0 };
+                    liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p1===p2?1:0, l: p2<p1?1:0 };
                 });
 
                 let tableData = (State.leagueDetails.standings || []).map(s => {
@@ -653,7 +638,6 @@
             })
         };
 
-        // Pull-to-refresh implementation for mobile browsers
         let touchstartY = 0;
         let touchendY = 0;
         const mainContainer = document.getElementById('main-scroll-container');
