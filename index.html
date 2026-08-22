@@ -11,7 +11,8 @@
             theme: {
                 extend: {
                     colors: {
-                        brand: { 50: '#f0fdf4', 500: '#10b981', 600: '#059669', 700: '#047857' }
+                        brand: { 50: '#f0fdf4', 500: '#10b981', 600: '#059669', 700: '#047857' },
+                        gray: { 750: '#2d3748' }
                     }
                 }
             }
@@ -74,6 +75,7 @@
 
         <div class="max-w-4xl mx-auto px-2.5 py-3">
             
+            <!-- My Team Tab Content -->
             <div id="content-my-team" class="tab-content hidden space-y-3">
                 <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
                     <div class="bg-gradient-to-r from-emerald-800 to-emerald-600 px-3.5 py-2.5 flex justify-between items-center text-white">
@@ -106,10 +108,12 @@
                 </div>
             </div>
 
+            <!-- Fixtures Tab Content -->
             <div id="content-fixtures" class="tab-content hidden space-y-2.5">
                 <div id="fixtures-list" class="space-y-2 mt-1"></div>
             </div>
 
+            <!-- Live Table Tab Content -->
             <div id="content-table" class="tab-content hidden space-y-2.5">
                 <h2 class="text-sm font-bold text-gray-200 px-1 mb-1">Live Standings</h2>
                 <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
@@ -203,7 +207,7 @@
                 const penaltiesMissed = stats.penalties_missed || 0;
 
                 for(let i=0; i<goals; i++) badges.push('⚽');
-                for(let i=0; i<assists; i++) badges.push('🅰️');
+                for(let i=0; i<assists; i++) badges.push('👟'); 
                 for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
                 for(let i=0; i<penaltiesSaved; i++) badges.push('🧤');
                 for(let i=0; i<yellowCards; i++) badges.push('🟨');
@@ -459,7 +463,26 @@
                     return;
                 }
 
-                h2hMatches.forEach(match => {
+                // Helper to build a highly condensed side-by-side player row
+                const buildCondensedPlayer = (pick, isBench) => {
+                    if (!pick) return '';
+                    const pStat = State.getStaticPlayer(pick.element);
+                    const pts = State.getLivePoints(pick.element);
+                    const stats = State.getLiveStats(pick.element);
+                    const statBadges = UI.formatStatBadges(stats);
+                    
+                    return `
+                    <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${isBench ? 'opacity-50' : ''}">
+                        <div class="flex items-center truncate min-w-0 pr-1">
+                            <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                            <span class="text-[10px] font-semibold text-gray-200 truncate">${pStat.web_name || 'Unknown'}</span>
+                            ${statBadges}
+                        </div>
+                        <div class="font-bold text-[11px] ${pts >= 6 ? 'text-emerald-400' : pts <= 0 ? 'text-rose-400' : 'text-gray-200'} flex-shrink-0">${pts}</div>
+                    </div>`;
+                };
+
+                h2hMatches.forEach((match, idx) => {
                     const t1 = State.entries[match.league_entry_1 || match.entry_1_entry];
                     const t2 = State.entries[match.league_entry_2 || match.entry_2_entry];
                     
@@ -468,14 +491,54 @@
                     const t1Name = t1.player_first_name === "Rory" ? "Rory A" : t1.player_first_name;
                     const t2Name = t2.player_first_name === "Rory" ? "Rory A" : t2.player_first_name;
 
+                    const t1Lineup = State.teamEvents[t1.entry_id];
+                    const t2Lineup = State.teamEvents[t2.entry_id];
+
+                    let detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">Lineups not available</div>';
+                    
+                    if (t1Lineup && t2Lineup && t1Lineup.picks && t2Lineup.picks) {
+                        const sortPicks = (a, b) => {
+                            const statA = State.getStaticPlayer(a.element);
+                            const statB = State.getStaticPlayer(b.element);
+                            return statA.element_type - statB.element_type;
+                        };
+                        
+                        const t1Starters = t1Lineup.picks.filter(p => p.position <= 11).sort(sortPicks);
+                        const t1Bench = t1Lineup.picks.filter(p => p.position > 11).sort((a,b) => a.position - b.position);
+                        
+                        const t2Starters = t2Lineup.picks.filter(p => p.position <= 11).sort(sortPicks);
+                        const t2Bench = t2Lineup.picks.filter(p => p.position > 11).sort((a,b) => a.position - b.position);
+
+                        detailsHtml = `
+                            <div class="flex p-2">
+                                <div class="w-1/2 pr-1.5 border-r border-gray-700/50">
+                                    <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider">Starters</div>
+                                    ${t1Starters.map(p => buildCondensedPlayer(p, false)).join('')}
+                                    <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider">Bench</div>
+                                    ${t1Bench.map(p => buildCondensedPlayer(p, true)).join('')}
+                                </div>
+                                <div class="w-1/2 pl-1.5">
+                                    <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider">Starters</div>
+                                    ${t2Starters.map(p => buildCondensedPlayer(p, false)).join('')}
+                                    <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider">Bench</div>
+                                    ${t2Bench.map(p => buildCondensedPlayer(p, true)).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+
                     listEl.innerHTML += `
-                        <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden">
-                            <div class="flex items-stretch h-16">
+                        <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
+                            <div class="flex items-stretch h-16 relative">
+                                <!-- Expand chevron -->
+                                <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </div>
                                 <div class="flex-1 flex flex-col justify-center px-3 min-w-0 ${t1.livePoints > t2.livePoints ? 'bg-emerald-950/30' : ''}">
                                     <div class="text-[10px] text-gray-400 truncate">${t1Name}</div>
                                     <div class="text-xs sm:text-sm font-bold truncate ${t1.livePoints > t2.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t1.entry_name}</div>
                                 </div>
-                                <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0">
+                                <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10">
                                     <div class="flex items-center space-x-1.5 font-bold">
                                         <span class="text-base ${t1.livePoints > t2.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t1.livePoints}</span>
                                         <span class="text-gray-600 text-xs">-</span>
@@ -486,6 +549,9 @@
                                     <div class="text-[10px] text-gray-400 truncate">${t2Name}</div>
                                     <div class="text-xs sm:text-sm font-bold truncate ${t2.livePoints > t1.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t2.entry_name}</div>
                                 </div>
+                            </div>
+                            <div id="fixture-details-${idx}" class="hidden bg-gray-900/60 border-t border-gray-700/60 shadow-inner">
+                                ${detailsHtml}
                             </div>
                         </div>`;
                 });
