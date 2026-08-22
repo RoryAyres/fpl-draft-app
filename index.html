@@ -119,6 +119,69 @@
             getLiveStats: (id) => State.liveScores?.elements[id]?.stats || {},
             getLivePoints: (id) => State.liveScores?.elements[id]?.stats?.total_points || 0,
             getLiveMinutes: (id) => State.liveScores?.elements[id]?.stats?.minutes || 0,
+
+            calculateLiveTeamData: (picks) => {
+                if (!picks) return { totalPoints: 0, starters: [], bench: [] };
+                
+                let enrichedPicks = picks.map(p => {
+                    const staticData = State.getStaticPlayer(p.element);
+                    return {
+                        ...p,
+                        static: staticData,
+                        stats: State.getLiveStats(p.element),
+                        fixture: Render.getFixtureStatus(staticData.team),
+                        isSubbedIn: false,
+                        isSubbedOut: false
+                    };
+                });
+                
+                let starters = enrichedPicks.filter(p => p.position <= 11).sort((a,b) => a.static.element_type - b.static.element_type);
+                let bench = enrichedPicks.filter(p => p.position > 11).sort((a, b) => a.position - b.position);
+
+                let formation = { 1: 0, 2: 0, 3: 0, 4: 0 };
+                starters.forEach(p => formation[p.static.element_type]++);
+
+                const hasPlayed = (stats) => stats && (stats.minutes > 0 || stats.yellow_cards > 0 || stats.red_cards > 0);
+                const isDefinitelyOut = (p) => p.fixture.status === 'FT' && !hasPlayed(p.stats);
+
+                bench.forEach(sub => {
+                    if (!hasPlayed(sub.stats)) return; 
+                    
+                    const subType = sub.static.element_type;
+                    
+                    for (let i = 0; i < starters.length; i++) {
+                        const starter = starters[i];
+                        if (starter.isSubbedOut || !isDefinitelyOut(starter)) continue;
+
+                        const starterType = starter.static.element_type;
+
+                        if (subType === 1 && starterType === 1) {
+                            starter.isSubbedOut = true;
+                            sub.isSubbedIn = true;
+                            break;
+                        } 
+                        else if (subType !== 1 && starterType !== 1) {
+                            formation[starterType]--;
+                            formation[subType]++;
+
+                            if (formation[2] >= 3 && formation[4] >= 1) {
+                                starter.isSubbedOut = true;
+                                sub.isSubbedIn = true;
+                                break;
+                            } else {
+                                formation[starterType]++;
+                                formation[subType]--;
+                            }
+                        }
+                    }
+                });
+
+                let totalPoints = 0;
+                starters.forEach(p => { if (!p.isSubbedOut) totalPoints += (p.stats?.total_points || 0); });
+                bench.forEach(p => { if (p.isSubbedIn) totalPoints += (p.stats?.total_points || 0); });
+
+                return { totalPoints, starters, bench };
+            }
         };
 
         const UI = {
@@ -150,12 +213,12 @@
             },
             getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK'),
             
-            formatStatBadges: (stats) => {
+            formatStatBadges: (stats, elementType) => {
                 if (!stats) return '';
                 let badges = [];
                 const goals = stats.goals_scored || 0;
                 const assists = stats.assists || 0;
-                const cleanSheets = stats.clean_sheets || 0;
+                const cleanSheets = (elementType === 4) ? 0 : (stats.clean_sheets || 0);
                 const yellowCards = stats.yellow_cards || 0;
                 const redCards = stats.red_cards || 0;
                 const ownGoals = stats.own_goals || 0;
@@ -164,7 +227,6 @@
                 const saves = stats.saves || 0;
                 const bonus = stats.bonus || 0;
                 
-                // Track actual defensive contributions logic from the FPL API
                 const defcons = stats.defensive_contributions || 0; 
                 
                 const savePoints = Math.floor(saves / 3);
@@ -226,7 +288,8 @@
                         const lineup = State.teamEvents[entry.entry_id];
                         let total = 0;
                         if(lineup && lineup.picks) {
-                            lineup.picks.forEach(p => { if (p.position <= 11) total += State.getLivePoints(p.element); });
+                            const processedTeam = State.calculateLiveTeamData(lineup.picks);
+                            total = processedTeam.totalPoints;
                         }
                         if (State.entries[entry.id]) {
                             State.entries[entry.id].livePoints = total;
@@ -308,7 +371,8 @@
                         const lineup = State.teamEvents[entry.entry_id];
                         let total = 0;
                         if(lineup && lineup.picks) {
-                            lineup.picks.forEach(p => { if (p.position <= 11) total += State.getLivePoints(p.element); });
+                            const processedTeam = State.calculateLiveTeamData(lineup.picks);
+                            total = processedTeam.totalPoints;
                         }
                         State.entries[entry.id].livePoints = total;
                     });
@@ -358,48 +422,6 @@
                     return;
                 }
 
-                const buildCondensedPlayer = (pick, isBench, isAway) => {
-                    if (!pick) return '';
-                    const pStat = State.getStaticPlayer(pick.element);
-                    const pts = State.getLivePoints(pick.element);
-                    const stats = State.getLiveStats(pick.element);
-                    const mins = State.getLiveMinutes(pick.element);
-                    const fix = Render.getFixtureStatus(pStat.team);
-                    const statBadges = UI.formatStatBadges(stats);
-                    
-                    const isPlayed = fix.status === 'Live' || fix.status === 'FT';
-                    const ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-500';
-                    const ptsDisplay = isPlayed ? pts : '-';
-
-                    const statusInd = isPlayed 
-                        ? `<span class="text-[8px] px-1 font-semibold ${fix.status === 'Live' ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${fix.status === 'Live' ? mins + '\'' : 'FT'}</span>` 
-                        : ``;
-                    
-                    if (isAway) {
-                        return `
-                        <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${isBench ? 'opacity-50' : ''}">
-                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${ptsDisplay}</div>
-                            <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
-                                ${statusInd}
-                                ${statBadges}
-                                <span class="text-[10px] font-semibold text-gray-200 truncate ml-1 mr-1.5">${pStat.web_name || 'Unknown'}</span>
-                                <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
-                            </div>
-                        </div>`;
-                    } else {
-                        return `
-                        <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${isBench ? 'opacity-50' : ''}">
-                            <div class="flex items-center truncate min-w-0 pr-1 w-full">
-                                <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
-                                <span class="text-[10px] font-semibold text-gray-200 truncate mr-1">${pStat.web_name || 'Unknown'}</span>
-                                ${statBadges}
-                                ${statusInd}
-                            </div>
-                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${ptsDisplay}</div>
-                        </div>`;
-                    }
-                };
-
                 h2hMatches.forEach((match, idx) => {
                     const t1 = State.entries[match.league_entry_1 || match.entry_1_entry];
                     const t2 = State.entries[match.league_entry_2 || match.entry_2_entry];
@@ -415,31 +437,77 @@
                     let detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">Lineups not available</div>';
                     
                     if (t1Lineup && t2Lineup && t1Lineup.picks && t2Lineup.picks) {
-                        const sortPicks = (a, b) => {
-                            const statA = State.getStaticPlayer(a.element);
-                            const statB = State.getStaticPlayer(b.element);
-                            return statA.element_type - statB.element_type;
+                        const t1Data = State.calculateLiveTeamData(t1Lineup.picks);
+                        const t2Data = State.calculateLiveTeamData(t2Lineup.picks);
+
+                        const buildCondensedPlayer = (pick, isBench, isAway) => {
+                            if (!pick) return '';
+                            const pStat = pick.static;
+                            const pts = pick.stats?.total_points || 0;
+                            const mins = pick.stats?.minutes || 0;
+                            const fix = pick.fixture;
+                            const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type); 
+                            
+                            const isPlayed = fix.status === 'Live' || fix.status === 'FT';
+                            
+                            let ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-500';
+                            let nameStyle = 'text-gray-200';
+                            
+                            if (pick.isSubbedOut) {
+                                ptsColor = 'text-gray-600 line-through';
+                                nameStyle = 'text-gray-500 line-through';
+                            } else if (pick.isSubbedIn) {
+                                ptsColor = 'text-emerald-300 font-extrabold';
+                                nameStyle = 'text-emerald-200';
+                            }
+
+                            const ptsDisplay = isPlayed ? pts : '-';
+                            const statusInd = isPlayed 
+                                ? `<span class="text-[8px] px-1 font-semibold ${fix.status === 'Live' ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${fix.status === 'Live' ? mins + '\'' : 'FT'}</span>` 
+                                : ``;
+                                
+                            let subIcon = '';
+                            if (pick.isSubbedOut) subIcon = `<span class="text-red-500 text-[10px] ml-0.5">↓</span>`;
+                            if (pick.isSubbedIn) subIcon = `<span class="text-emerald-500 text-[10px] ml-0.5">↑</span>`;
+
+                            if (isAway) {
+                                return `
+                                <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
+                                    <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${ptsDisplay}</div>
+                                    <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
+                                        ${statusInd}
+                                        ${statBadges}
+                                        <span class="text-[10px] font-semibold ${nameStyle} truncate ml-1 mr-1.5">${pStat.web_name || 'Unknown'}${subIcon}</span>
+                                        <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                                    </div>
+                                </div>`;
+                            } else {
+                                return `
+                                <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
+                                    <div class="flex items-center truncate min-w-0 pr-1 w-full">
+                                        <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                                        <span class="text-[10px] font-semibold ${nameStyle} truncate mr-1">${pStat.web_name || 'Unknown'}${subIcon}</span>
+                                        ${statBadges}
+                                        ${statusInd}
+                                    </div>
+                                    <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${ptsDisplay}</div>
+                                </div>`;
+                            }
                         };
-                        
-                        const t1Starters = t1Lineup.picks.filter(p => p.position <= 11).sort(sortPicks);
-                        const t1Bench = t1Lineup.picks.filter(p => p.position > 11).sort((a,b) => a.position - b.position);
-                        
-                        const t2Starters = t2Lineup.picks.filter(p => p.position <= 11).sort(sortPicks);
-                        const t2Bench = t2Lineup.picks.filter(p => p.position > 11).sort((a,b) => a.position - b.position);
 
                         detailsHtml = `
                             <div class="flex p-2">
                                 <div class="w-1/2 pr-1 border-r border-gray-700/50">
                                     <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider text-left">Starters</div>
-                                    ${t1Starters.map(p => buildCondensedPlayer(p, false, false)).join('')}
+                                    ${t1Data.starters.map(p => buildCondensedPlayer(p, false, false)).join('')}
                                     <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider text-left">Bench</div>
-                                    ${t1Bench.map(p => buildCondensedPlayer(p, true, false)).join('')}
+                                    ${t1Data.bench.map(p => buildCondensedPlayer(p, true, false)).join('')}
                                 </div>
                                 <div class="w-1/2 pl-1">
                                     <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider text-right">Starters</div>
-                                    ${t2Starters.map(p => buildCondensedPlayer(p, false, true)).join('')}
+                                    ${t2Data.starters.map(p => buildCondensedPlayer(p, false, true)).join('')}
                                     <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider text-right">Bench</div>
-                                    ${t2Bench.map(p => buildCondensedPlayer(p, true, true)).join('')}
+                                    ${t2Data.bench.map(p => buildCondensedPlayer(p, true, true)).join('')}
                                 </div>
                             </div>
                         `;
