@@ -173,7 +173,7 @@
                     
                     return await response.json();
                 } catch (error) {
-                    throw error; // Re-throw to be caught by the main init function
+                    throw error; 
                 }
             },
             
@@ -185,14 +185,11 @@
                         State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
                         State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
                         
-                        // FIX: Safely determine current gameweek.
-                        // First, try the dedicated Draft game endpoint
                         try {
                             const gameStatus = await API.fetchVercelProxy('game');
                             State.currentGW = gameStatus.current_event || 1;
                         } catch (e) {
                             console.warn("Could not fetch 'game' endpoint, falling back to events object calculation");
-                            // Fallback if 'game' endpoint fails: Handle events as either Array or Object safely
                             let eventsList = State.bootstrapStatic.events || [];
                             if (!Array.isArray(eventsList)) {
                                 eventsList = Object.values(eventsList);
@@ -204,7 +201,9 @@
                         console.log(`[FRONTEND] Determined Current GW is: ${State.currentGW}`);
 
                         State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
-                        State.plFixtures = []; // Will implement real PL fixtures later
+                        
+                        // FIX: Fetch the actual gameweek fixtures to render opponent abbreviations correctly
+                        State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
 
                         for (const entry of State.leagueDetails.league_entries) {
                             try {
@@ -221,9 +220,8 @@
                         console.error("[FRONTEND] API Fetch Error:", proxyError);
                         UI.showError(`Error Fetching Data: ${proxyError.message}`);
                         
-                        await new Promise(r => setTimeout(r, 4000)); // Show error for 4 seconds
+                        await new Promise(r => setTimeout(r, 4000)); 
                         
-                        // Fallback to Mock Data
                         State.isUsingMockData = true;
                         UI.showLoading('Loading Mock Data...', 'Previewing UI without live connection.');
                         document.getElementById('mock-indicator').classList.remove('hidden');
@@ -239,7 +237,6 @@
                         });
                     }
 
-                    // Process loaded data (Live or Mock)
                     State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
                     document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
                     
@@ -262,7 +259,7 @@
                     UI.switchTab('my-team');
                     
                 } catch (error) {
-                    UI.showError("Critical initialization error: " + error.message);
+                    UI.showError("Critical initialisation error: " + error.message);
                     console.error(error);
                 }
             }
@@ -342,7 +339,9 @@
             fixtures: () => {
                 const listEl = document.getElementById('fixtures-list');
                 listEl.innerHTML = '';
-                const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event === State.currentGW) : [];
+                
+                // FIX: Use soft equality (==) for event matching and handle missing arrays
+                const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
 
                 if (h2hMatches.length === 0) {
                     listEl.innerHTML = '<div class="text-center p-6 text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200">No H2H fixtures found for this gameweek (Classic league or missing schedule).</div>';
@@ -350,7 +349,10 @@
                 }
 
                 h2hMatches.forEach(match => {
-                    const t1 = State.entries[match.league_entry_1], t2 = State.entries[match.league_entry_2];
+                    // FIX: Add fallbacks for standard H2H property names
+                    const t1 = State.entries[match.league_entry_1 || match.entry_1_entry];
+                    const t2 = State.entries[match.league_entry_2 || match.entry_2_entry];
+                    
                     if (!t1 || !t2) return;
                     
                     listEl.innerHTML += `
@@ -381,7 +383,7 @@
                 const thead = document.getElementById('live-table-head');
                 tbody.innerHTML = '';
 
-                const matches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event === State.currentGW) : [];
+                const matches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
                 const isH2H = matches.length > 0;
                 
                 if (isH2H) {
@@ -392,11 +394,13 @@
 
                 let liveH2H = {};
                 matches.forEach(m => {
-                    const p1 = State.entries[m.league_entry_1]?.livePoints || 0;
-                    const p2 = State.entries[m.league_entry_2]?.livePoints || 0;
+                    const entry1 = m.league_entry_1 || m.entry_1_entry;
+                    const entry2 = m.league_entry_2 || m.entry_2_entry;
+                    const p1 = State.entries[entry1]?.livePoints || 0;
+                    const p2 = State.entries[entry2]?.livePoints || 0;
                     
-                    liveH2H[m.league_entry_1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
-                    liveH2H[m.league_entry_2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p1===p2?1:0, l: p2<p1?1:0 };
+                    liveH2H[entry1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
+                    liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p1===p2?1:0, l: p2<p1?1:0 };
                 });
 
                 let tableData = (State.leagueDetails.standings || []).map(s => {
@@ -436,12 +440,13 @@
                                 <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.projectedH2HPts}</td>
                             </tr>`;
                     } else {
-                         tbody.innerHTML += `
+                        // FIX: Updated table logic to use the computed projectedTotalFPL variable
+                        tbody.innerHTML += `
                             <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
                                 <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
                                 <td class="px-2 py-4 text-center">${rankIcon}</td>
                                 <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name || ''}</div></td>
-                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.total || 0}</td>
+                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.projectedTotalFPL}</td>
                                 <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.liveFPLPts}</td>
                             </tr>`;
                     }

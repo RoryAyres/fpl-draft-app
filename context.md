@@ -16,6 +16,7 @@ The application interfaces with the official Premier League Draft API:
 - `league details`: `/api/proxy?path=league/238/details` (Standings, league entries, H2H matches)
 - `team gameweek picks`: `/api/proxy?path=entry/{entry_id}/event/{gameweek}` (Starting XI and bench composition)
 - `live points`: `/api/proxy?path=event/{gameweek}/live` (Live points and minutes played per player)
+- `fixtures`: `/api/proxy?path=fixtures/?event={gameweek}` (Gameweek real-life fixtures to calculate opponents and minutes status)
 - `game status`: `/api/proxy?path=game` (Dedicated endpoint to safely determine current gameweek).
 
 *Note: In local preview or offline environments, the app automatically falls back to an internal `MockData` object to populate all three tabs.*
@@ -29,8 +30,8 @@ The application interfaces with the official Premier League Draft API:
 - **`API`**: Manages data fetching through the Vercel proxy with automatic fallback error handling. Includes specific logic to query the `/api/game` endpoint to determine the current gameweek, bypassing bugs with the `events` object in the Draft API.
 - **`Render`**: Dynamically constructs DOM elements for:
   - **My Team:** Position-sorted Starting XI and bench, opponent status badges (`(H)`/`(A)`), fixture state (`Live`, `FT`, `Soon`), and minutes played.
-  - **Fixtures:** H2H matchup cards comparing live scores for the current gameweek.
-  - **Live Table:** Automatically detects H2H vs Classic format, computes projected live H2H/total points, sorts the standings, and displays rank change arrows.
+  - **Fixtures:** H2H matchup cards comparing live scores for the current gameweek. Uses soft equality for event matching and fallbacks for standard H2H properties (`entry_1_entry` vs `league_entry_1`).
+  - **Live Table:** Automatically detects H2H vs Classic format, computes projected live H2H/total points, sorts the standings, and displays rank change arrows. Classic tables actively use the computed `projectedTotalFPL`.
 
 ---
 
