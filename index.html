@@ -2,105 +2,143 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FPL Draft Live Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FPL Draft Live</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#f0fdf4', 500: '#10b981', 600: '#059669', 700: '#047857' }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .loader { border-top-color: #3b82f6; animation: spinner 1.5s linear infinite; }
+        .loader { border-top-color: #10b981; animation: spinner 0.8s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .active-tab { border-bottom: 2px solid #3b82f6; color: #3b82f6; font-weight: 600; }
+        .active-tab { border-bottom: 2px solid #10b981; color: #10b981; font-weight: 700; }
         .arrow-up { color: #10b981; } 
         .arrow-down { color: #ef4444; } 
+        /* Pull to refresh indicator animation */
+        #ptr-element { transition: transform 0.2s ease, opacity 0.2s ease; }
     </style>
 </head>
-<body class="text-gray-800 h-screen flex flex-col overflow-hidden">
+<body class="bg-gray-900 text-gray-100 h-screen flex flex-col overflow-hidden select-none">
 
-    <header class="bg-white shadow-sm z-10 sticky top-0">
-        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-            <h1 class="text-xl font-bold text-gray-900 flex items-center">
-                <svg class="w-6 h-6 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+    <!-- Pull to Refresh Visual Indicator -->
+    <div id="ptr-element" class="absolute top-0 inset-x-0 h-14 flex items-center justify-center bg-gray-800 text-gray-400 text-xs font-semibold z-50 transform -translate-y-full opacity-0 shadow-inner">
+        <svg id="ptr-icon" class="w-5 h-5 mr-2 animate-spin text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        <span id="ptr-text">Pull down to refresh...</span>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-gray-800/90 backdrop-blur-md border-b border-gray-700/60 z-20 sticky top-0">
+        <div class="max-w-4xl mx-auto px-3 py-2.5 flex justify-between items-center">
+            <h1 class="text-base font-extrabold text-white tracking-tight flex items-center">
+                <svg class="w-5 h-5 mr-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 FPL Draft Live
             </h1>
-            <div class="text-sm font-medium bg-gray-100 px-3 py-1 rounded-full text-gray-600 flex items-center space-x-2">
-                <span>League: <span id="league-name-display">Loading...</span></span>
-                <span id="live-indicator" class="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden" title="Connected to Live Data"></span>
-                <span id="mock-indicator" class="w-2 h-2 rounded-full bg-yellow-400 hidden" title="Using Mock Data"></span>
+            
+            <div class="flex items-center space-x-2">
+                <!-- Manual Refresh Button -->
+                <button onclick="API.refreshData(true)" class="p-1.5 bg-gray-700/50 hover:bg-gray-700 rounded-full text-gray-300 hover:text-white transition-colors active:scale-95" title="Refresh Data">
+                    <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </button>
+
+                <!-- League Status Pill -->
+                <div class="text-xs font-medium bg-gray-900/60 px-2.5 py-1 rounded-full text-gray-300 border border-gray-700/50 flex items-center space-x-1.5">
+                    <span class="truncate max-w-[100px]" id="league-name-display">Loading...</span>
+                    <span id="live-indicator" class="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden" title="Connected"></span>
+                    <span id="mock-indicator" class="w-2 h-2 rounded-full bg-amber-400 hidden" title="Mock Mode"></span>
+                </div>
             </div>
         </div>
         
-        <nav class="max-w-4xl mx-auto px-4 flex overflow-x-auto no-scrollbar border-b border-gray-200">
-            <button onclick="UI.switchTab('my-team')" id="tab-my-team" class="active-tab whitespace-nowrap py-3 px-4 text-sm font-medium transition-colors hover:text-blue-500">My Team</button>
-            <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-3 px-4 text-sm font-medium text-gray-500 transition-colors hover:text-blue-500">Live Fixtures</button>
-            <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-3 px-4 text-sm font-medium text-gray-500 transition-colors hover:text-blue-500">Live Table</button>
+        <nav class="max-w-4xl mx-auto px-3 flex overflow-x-auto no-scrollbar border-t border-gray-700/40">
+            <button onclick="UI.switchTab('my-team')" id="tab-my-team" class="active-tab whitespace-nowrap py-2.5 px-4 text-xs font-semibold tracking-wide transition-colors">My Team</button>
+            <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Fixtures</button>
+            <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Table</button>
         </nav>
     </header>
 
-    <main class="flex-grow overflow-y-auto relative bg-gray-50">
-        <div id="loading-overlay" class="absolute inset-0 bg-gray-50 bg-opacity-90 flex flex-col items-center justify-center z-50">
-            <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-            <h2 class="text-center text-gray-600 text-sm font-medium" id="loading-text">Fetching live data...</h2>
-            <p class="text-xs text-gray-400 mt-2 max-w-xs text-center" id="loading-subtext"></p>
+    <!-- Main Content -->
+    <main id="main-scroll-container" class="flex-grow overflow-y-auto relative bg-gray-900 pb-16">
+        <div id="loading-overlay" class="absolute inset-0 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center z-50">
+            <div class="loader ease-linear rounded-full border-3 border-t-3 border-gray-700 h-10 w-10 mb-3"></div>
+            <h2 class="text-center text-gray-300 text-xs font-medium" id="loading-text">Fetching live data...</h2>
+            <p class="text-[10px] text-gray-500 mt-1 max-w-xs text-center px-4" id="loading-subtext"></p>
         </div>
 
-        <div class="max-w-4xl mx-auto px-4 py-6 pb-20">
-            <div id="content-my-team" class="tab-content hidden">
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-                    <div class="bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-4 flex justify-between items-center text-white">
-                        <div>
-                            <!-- UPDATED: Replaced static title with styled select dropdown -->
-                            <div class="relative inline-block">
-                                <select id="team-selector" onchange="UI.changeTeam(this.value)" class="text-lg font-bold bg-transparent text-white border-b border-blue-400/50 hover:border-white focus:outline-none py-1 pr-6 cursor-pointer appearance-none transition-colors">
-                                    <option class="text-gray-900" value="">Loading Team...</option>
+        <div class="max-w-4xl mx-auto px-2.5 py-3">
+            
+            <!-- My Team Tab Content -->
+            <div id="content-my-team" class="tab-content hidden space-y-3">
+                <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
+                    <!-- Compact Team Header -->
+                    <div class="bg-gradient-to-r from-emerald-800 to-emerald-600 px-3.5 py-2.5 flex justify-between items-center text-white">
+                        <div class="min-w-0 flex-1 mr-2">
+                            <div class="relative inline-flex items-center max-w-full">
+                                <select id="team-selector" onchange="UI.changeTeam(this.value)" class="text-sm font-extrabold bg-transparent text-white border-b border-emerald-300/40 hover:border-white focus:outline-none py-0.5 pr-5 cursor-pointer appearance-none truncate w-full">
+                                    <option class="text-gray-900" value="">Loading...</option>
                                 </select>
-                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center text-white">
-                                    <svg class="fill-current h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center text-emerald-200">
+                                    <svg class="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                                 </div>
                             </div>
-                            <p class="text-blue-100 text-sm mt-0.5" id="my-manager-name">Manager</p>
+                            <p class="text-emerald-100 text-[11px] font-medium truncate mt-0.5" id="my-manager-name">Manager</p>
                         </div>
-                        <div class="text-right">
-                            <div class="text-3xl font-black" id="my-team-points">0</div>
-                            <div class="text-blue-100 text-xs uppercase tracking-wider font-semibold">GW Points</div>
+                        <div class="text-right flex-shrink-0 bg-black/20 px-2.5 py-1 rounded-lg border border-white/10">
+                            <div class="text-xl font-black leading-tight" id="my-team-points">0</div>
+                            <div class="text-emerald-200 text-[9px] uppercase tracking-wider font-bold">GW Pts</div>
                         </div>
                     </div>
+
+                    <!-- Condensed Player List -->
                     <div class="p-0">
-                        <div class="flex border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 p-3">
-                            <div class="w-10 text-center">Pos</div>
-                            <div class="flex-grow pl-2">Player</div>
-                            <div class="w-24 text-center">Opponent</div>
-                            <div class="w-16 text-right">Pts</div>
+                        <div class="flex border-b border-gray-700/50 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-800/50 px-3 py-1.5">
+                            <div class="w-8 text-center">Pos</div>
+                            <div class="flex-grow pl-1.5">Player / Events</div>
+                            <div class="w-20 text-center">Fixture</div>
+                            <div class="w-12 text-right">Pts</div>
                         </div>
-                        <div id="my-team-players-list" class="divide-y divide-gray-100"></div>
+                        <div id="my-team-players-list" class="divide-y divide-gray-700/40"></div>
                     </div>
                 </div>
             </div>
 
-            <div id="content-fixtures" class="tab-content hidden">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-bold text-gray-800">H2H Matchups</h2>
-                    <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-medium border border-green-200" id="gw-status">Gameweek Live</span>
+            <!-- Fixtures Tab Content -->
+            <div id="content-fixtures" class="tab-content hidden space-y-2.5">
+                <div class="flex justify-between items-center px-1 mb-1">
+                    <h2 class="text-sm font-bold text-gray-200">H2H Matchups</h2>
+                    <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-semibold border border-emerald-700/50" id="gw-status">Gameweek Live</span>
                 </div>
-                <div id="fixtures-list" class="space-y-4"></div>
+                <div id="fixtures-list" class="space-y-2"></div>
             </div>
 
-            <div id="content-table" class="tab-content hidden">
-                <h2 class="text-lg font-bold text-gray-800 mb-4">Live League Standings</h2>
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <!-- Live Table Tab Content -->
+            <div id="content-table" class="tab-content hidden space-y-2.5">
+                <h2 class="text-sm font-bold text-gray-200 px-1 mb-1">Live Standings</h2>
+                <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
-                            <thead id="live-table-head" class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                        <table class="w-full text-xs text-left">
+                            <thead id="live-table-head" class="text-[10px] text-gray-400 uppercase bg-gray-800/80 border-b border-gray-700/60">
                             </thead>
-                            <tbody id="live-table-body" class="divide-y divide-gray-200"></tbody>
+                            <tbody id="live-table-body" class="divide-y divide-gray-700/40"></tbody>
                         </table>
                     </div>
                 </div>
             </div>
             
-            <div id="error-message" class="hidden mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <!-- Error Banner -->
+            <div id="error-message" class="hidden mt-3 bg-red-900/40 border border-red-700/60 text-red-300 px-3 py-2.5 rounded-lg text-xs relative shadow-lg" role="alert">
                 <strong class="font-bold">Notice:</strong>
                 <span class="block sm:inline" id="error-text">Something went wrong.</span>
             </div>
@@ -126,6 +164,7 @@
             teamsData: {},
             
             getStaticPlayer: (id) => State.bootstrapStatic?.elements.find(e => e.id === id) || {},
+            getLiveStats: (id) => State.liveScores?.elements[id]?.stats || {},
             getLivePoints: (id) => State.liveScores?.elements[id]?.stats?.total_points || 0,
             getLiveMinutes: (id) => State.liveScores?.elements[id]?.stats?.minutes || 0,
         };
@@ -144,53 +183,108 @@
             switchTab: (tabId) => {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
                 document.querySelectorAll('nav button').forEach(el => {
-                    el.classList.remove('active-tab', 'text-blue-500', 'font-semibold');
-                    el.classList.add('text-gray-500');
+                    el.classList.remove('active-tab', 'text-emerald-400');
+                    el.classList.add('text-gray-400');
                 });
                 document.getElementById(`content-${tabId}`).classList.remove('hidden');
                 const activeBtn = document.getElementById(`tab-${tabId}`);
-                activeBtn.classList.add('active-tab', 'text-blue-500');
-                activeBtn.classList.remove('text-gray-500');
+                activeBtn.classList.add('active-tab', 'text-emerald-400');
+                activeBtn.classList.remove('text-gray-400');
                 Render.currentTab();
             },
-            // NEW: Function to handle changing the active team view
             changeTeam: (teamId) => {
                 State.myTeamId = parseInt(teamId);
                 Render.myTeam();
-                // Optional: Re-render table to immediately update the highlighted row for the new active team
                 if (!document.getElementById('content-table').classList.contains('hidden')) {
                     Render.liveTable();
                 }
             },
             getPosClass: (posId) => {
-                const map = { 1: 'bg-yellow-100 text-yellow-800 border-yellow-200', 2: 'bg-blue-100 text-blue-800 border-blue-200', 3: 'bg-green-100 text-green-800 border-green-200', 4: 'bg-red-100 text-red-800 border-red-200' };
-                return map[posId] || 'bg-gray-100 text-gray-800 border-gray-200';
+                const map = { 1: 'bg-amber-900/50 text-amber-300 border-amber-700/50', 2: 'bg-blue-900/50 text-blue-300 border-blue-700/50', 3: 'bg-emerald-900/50 text-emerald-300 border-emerald-700/50', 4: 'bg-rose-900/50 text-rose-300 border-rose-700/50' };
+                return map[posId] || 'bg-gray-800 text-gray-300 border-gray-700';
             },
-            getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK')
+            getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK'),
+            
+            // Generate stat event emojis based on stats breakdown
+            formatStatBadges: (stats) => {
+                if (!stats) return '';
+                let badges = [];
+                const goals = stats.goals_scored || 0;
+                const assists = stats.assists || 0;
+                const cleanSheets = stats.clean_sheets || 0;
+                const yellowCards = stats.yellow_cards || 0;
+                const redCards = stats.red_cards || 0;
+                const ownGoals = stats.own_goals || 0;
+                const penaltiesSaved = stats.penalties_saved || 0;
+                const penaltiesMissed = stats.penalties_missed || 0;
+
+                for(let i=0; i<goals; i++) badges.push('⚽');
+                for(let i=0; i<assists; i++) badges.push('🎯');
+                for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
+                for(let i=0; i<penaltiesSaved; i++) badges.push('🧤');
+                for(let i=0; i<yellowCards; i++) badges.push('🟨');
+                for(let i=0; i<redCards; i++) badges.push('🟥');
+                for(let i=0; i<penaltiesMissed; i++) badges.push('❌');
+                for(let i=0; i<ownGoals; i++) badges.push('⚠️');
+
+                if (badges.length === 0) return '';
+                return `<span class="inline-flex items-center space-x-0.5 ml-1 text-[11px]">${badges.join('')}</span>`;
+            }
         };
 
         const API = {
             fetchVercelProxy: async (endpoint) => {
-                try {
-                    const fetchUrl = `${CONFIG.PROXY_URL}${encodeURI(endpoint)}`;
-                    console.log(`[FRONTEND] Fetching: ${fetchUrl}`);
-                    
-                    const response = await fetch(fetchUrl);
-                    
-                    if (!response.ok) {
-                        let errBody = '';
-                        try {
-                            const errJson = await response.json();
-                            errBody = errJson.error || JSON.stringify(errJson);
-                        } catch(e) {
-                            errBody = await response.text();
-                        }
-                        throw new Error(`Endpoint '${endpoint}' failed with status ${response.status}.`);
+                const fetchUrl = `${CONFIG.PROXY_URL}${encodeURI(endpoint)}`;
+                const response = await fetch(fetchUrl);
+                if (!response.ok) {
+                    let errBody = '';
+                    try {
+                        const errJson = await response.json();
+                        errBody = errJson.error || JSON.stringify(errJson);
+                    } catch(e) {
+                        errBody = await response.text();
                     }
-                    
-                    return await response.json();
-                } catch (error) {
-                    throw error; 
+                    throw new Error(`Endpoint '${endpoint}' failed with status ${response.status}.`);
+                }
+                return await response.json();
+            },
+            
+            refreshData: async (manual = false) => {
+                try {
+                    if (manual) {
+                        const icon = document.getElementById('refresh-icon');
+                        icon.classList.add('animate-spin');
+                    }
+                    State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
+                    State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
+                    State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
+                    State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
+
+                    for (const entry of State.leagueDetails.league_entries) {
+                        try {
+                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
+                            State.teamEvents[entry.entry_id] = teamData;
+                        } catch (err) {}
+                    }
+
+                    State.leagueDetails.league_entries.forEach(entry => {
+                        const lineup = State.teamEvents[entry.entry_id];
+                        let total = 0;
+                        if(lineup && lineup.picks) {
+                            lineup.picks.forEach(p => { if (p.position <= 11) total += State.getLivePoints(p.element); });
+                        }
+                        if (State.entries[entry.id]) {
+                            State.entries[entry.id].livePoints = total;
+                        }
+                    });
+
+                    Render.currentTab();
+                    if (manual) {
+                        setTimeout(() => document.getElementById('refresh-icon').classList.remove('animate-spin'), 500);
+                    }
+                } catch (e) {
+                    console.error("Background refresh failed:", e);
+                    if (manual) document.getElementById('refresh-icon').classList.remove('animate-spin');
                 }
             },
             
@@ -206,16 +300,11 @@
                             const gameStatus = await API.fetchVercelProxy('game');
                             State.currentGW = gameStatus.current_event || 1;
                         } catch (e) {
-                            console.warn("Could not fetch 'game' endpoint, falling back to events object calculation");
                             let eventsList = State.bootstrapStatic.events || [];
-                            if (!Array.isArray(eventsList)) {
-                                eventsList = Object.values(eventsList);
-                            }
+                            if (!Array.isArray(eventsList)) eventsList = Object.values(eventsList);
                             const currentEvent = eventsList.find(e => e.is_current) || eventsList.find(e => e.is_next);
                             State.currentGW = currentEvent ? currentEvent.id : 1;
                         }
-
-                        console.log(`[FRONTEND] Determined Current GW is: ${State.currentGW}`);
 
                         State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
                         State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
@@ -224,9 +313,7 @@
                             try {
                                 const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
                                 State.teamEvents[entry.entry_id] = teamData;
-                            } catch (err) {
-                                console.warn(`Could not load picks for entry ${entry.entry_id}`);
-                            }
+                            } catch (err) {}
                         }
 
                         document.getElementById('live-indicator').classList.remove('hidden');
@@ -234,8 +321,7 @@
                     } catch (proxyError) {
                         console.error("[FRONTEND] API Fetch Error:", proxyError);
                         UI.showError(`Error Fetching Data: ${proxyError.message}`);
-                        
-                        await new Promise(r => setTimeout(r, 4000)); 
+                        await new Promise(r => setTimeout(r, 3000)); 
                         
                         State.isUsingMockData = true;
                         UI.showLoading('Loading Mock Data...', 'Previewing UI without live connection.');
@@ -261,13 +347,12 @@
                     
                     State.myTeamId = State.leagueDetails.league_entries[0]?.id;
 
-                    // NEW: Populate the Team Selector Dropdown
                     const selector = document.getElementById('team-selector');
                     selector.innerHTML = '';
                     State.leagueDetails.league_entries.forEach(entry => {
                         const opt = document.createElement('option');
                         opt.value = entry.id;
-                        opt.className = "text-gray-900";
+                        opt.className = "text-gray-900 bg-gray-100";
                         opt.text = entry.entry_name;
                         selector.appendChild(opt);
                     });
@@ -302,14 +387,21 @@
             
             getFixtureStatus: (teamId) => {
                 const fixture = State.plFixtures.find(f => f.team_h === teamId || f.team_a === teamId);
-                if (!fixture) return { opponent: 'TBD', status: 'Soon', isHome: null, colorClass: 'text-gray-500 bg-gray-100 border-gray-200' };
+                if (!fixture) return { opponent: 'TBD', status: 'Soon', isHome: null, colorClass: 'text-gray-400 bg-gray-800 border-gray-700' };
                 const isHome = fixture.team_h === teamId;
                 const oppTeam = State.teamsData[isHome ? fixture.team_a : fixture.team_h];
                 const opponentName = oppTeam ? oppTeam.short_name : 'UNK';
                 
-                let status = 'Soon', colorClass = 'text-gray-500 bg-gray-100 border-gray-200';
-                if (fixture.finished) { status = 'FT'; colorClass = 'text-gray-600 bg-gray-200 border-gray-300'; } 
-                else if (fixture.started) { status = 'Live'; colorClass = 'text-green-700 bg-green-100 border-green-300 animate-pulse'; }
+                let status = 'Soon', colorClass = 'text-gray-400 bg-gray-800 border-gray-700';
+                if (fixture.finished || fixture.started === false && (fixture.minutes > 90 || fixture.code && fixture.finished)) { 
+                    status = 'FT'; colorClass = 'text-gray-300 bg-gray-700/60 border-gray-600'; 
+                } 
+                else if (fixture.finished) { 
+                    status = 'FT'; colorClass = 'text-gray-300 bg-gray-700/60 border-gray-600'; 
+                }
+                else if (fixture.started) { 
+                    status = 'Live'; colorClass = 'text-emerald-400 bg-emerald-950/80 border-emerald-700/60 animate-pulse'; 
+                }
                 return { opponent: opponentName, isHome, status, colorClass };
             },
 
@@ -321,7 +413,6 @@
 
                 const formattedName = teamInfo.player_first_name === "Rory" ? "Rory A" : `${teamInfo.player_first_name} ${teamInfo.player_last_name}`;
 
-                // Sync the select value in case it was changed internally, update manager, and update points
                 document.getElementById('team-selector').value = teamInfo.id;
                 document.getElementById('my-manager-name').innerText = formattedName;
                 document.getElementById('my-team-points').innerText = teamInfo.livePoints;
@@ -333,25 +424,30 @@
                     const pStat = State.getStaticPlayer(pick.element);
                     const pts = State.getLivePoints(pick.element);
                     const mins = State.getLiveMinutes(pick.element);
+                    const stats = State.getLiveStats(pick.element);
                     const t = State.teamsData[pStat.team];
                     const fix = Render.getFixtureStatus(pStat.team);
+                    const statBadges = UI.formatStatBadges(stats);
                     
                     const minBadge = (fix.status === 'Live' || fix.status === 'FT') 
-                        ? `<span class="ml-1.5 px-1 py-0.5 rounded ${isBench ? 'bg-gray-200 border-gray-300' : 'bg-gray-100 border-gray-200'} text-gray-500 font-medium text-[9px] border">${mins}'</span>` 
+                        ? `<span class="ml-1 px-1 py-0.5 rounded ${isBench ? 'bg-gray-800 text-gray-400' : 'bg-gray-800 text-gray-300'} font-medium text-[9px] border border-gray-700">${mins}'</span>` 
                         : '';
                     
                     return `
-                        <div class="flex items-center p-3 ${isBench ? 'opacity-60 bg-gray-50' : 'hover:bg-gray-50 transition-colors'}">
-                            <div class="w-10 text-center"><span class="text-[10px] font-bold px-1.5 py-0.5 rounded border ${UI.getPosClass(pStat.element_type)}">${UI.getPosName(pStat.element_type)}</span></div>
-                            <div class="flex-grow pl-2 flex flex-col justify-center">
-                                <span class="text-sm font-semibold text-gray-900">${pStat.web_name || 'Unknown'}</span>
-                                <div class="flex items-center text-xs text-gray-500 mt-0.5"><span>${t ? t.short_name : ''}</span>${minBadge}</div>
+                        <div class="flex items-center px-3 py-2 ${isBench ? 'opacity-50 bg-gray-900/40' : 'hover:bg-gray-800/40 transition-colors'}">
+                            <div class="w-8 text-center flex-shrink-0"><span class="text-[9px] font-bold px-1 py-0.5 rounded border ${UI.getPosClass(pStat.element_type)}">${UI.getPosName(pStat.element_type)}</span></div>
+                            <div class="flex-grow pl-2 min-w-0 flex flex-col justify-center">
+                                <div class="flex items-center space-x-1 truncate">
+                                    <span class="text-xs font-semibold text-gray-100 truncate">${pStat.web_name || 'Unknown'}</span>
+                                    ${statBadges}
+                                </div>
+                                <div class="flex items-center text-[10px] text-gray-400 mt-0.5"><span>${t ? t.short_name : ''}</span>${minBadge}</div>
                             </div>
-                            <div class="w-24 text-center text-xs flex flex-col items-center space-y-1">
-                                <span class="font-medium ${isBench ? 'text-gray-500' : 'text-gray-700'}">${fix.opponent} ${fix.isHome ? '(H)' : '(A)'}</span>
-                                <span class="text-[10px] px-1.5 py-0.5 rounded border ${fix.colorClass}">${fix.status}</span>
+                            <div class="w-20 text-center text-[11px] flex flex-col items-center flex-shrink-0">
+                                <span class="font-medium text-gray-300">${fix.opponent} ${fix.isHome ? '(H)' : '(A)'}</span>
+                                <span class="text-[9px] px-1.5 py-0.2 rounded border mt-0.5 ${fix.colorClass}">${fix.status}</span>
                             </div>
-                            <div class="w-16 text-right"><span class="text-lg font-bold ${isBench ? 'text-gray-500 text-md' : (pts >= 6 ? 'text-green-600' : pts <= 0 ? 'text-red-500' : 'text-gray-800')}">${pts}</span></div>
+                            <div class="w-12 text-right flex-shrink-0"><span class="text-sm font-bold ${isBench ? 'text-gray-400' : (pts >= 6 ? 'text-emerald-400' : pts <= 0 ? 'text-rose-400' : 'text-gray-200')}">${pts}</span></div>
                         </div>`;
                 };
 
@@ -361,7 +457,7 @@
                 
                 starters.forEach(item => listEl.innerHTML += buildPlayerRow(item.pick, false));
 
-                listEl.innerHTML += `<div class="bg-gray-100 p-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider border-y border-gray-200 mt-2">Bench</div>`;
+                listEl.innerHTML += `<div class="bg-gray-800/80 px-3 py-1.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider border-y border-gray-700/60 mt-1">Bench</div>`;
 
                 const bench = lineup.picks.filter(p => p.position > 11).sort((a, b) => a.position - b.position);
                 bench.forEach(pick => listEl.innerHTML += buildPlayerRow(pick, true));
@@ -374,7 +470,7 @@
                 const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
 
                 if (h2hMatches.length === 0) {
-                    listEl.innerHTML = '<div class="text-center p-6 text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200">No H2H fixtures found for this gameweek (Classic league or missing schedule).</div>';
+                    listEl.innerHTML = '<div class="text-center p-4 text-xs text-gray-400 bg-gray-800 rounded-xl border border-gray-700">No H2H fixtures found for this gameweek.</div>';
                     return;
                 }
 
@@ -388,22 +484,22 @@
                     const t2Name = t2.player_first_name === "Rory" ? "Rory A" : t2.player_first_name;
 
                     listEl.innerHTML += `
-                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div class="flex items-stretch h-20">
-                                <div class="flex-1 flex flex-col justify-center px-4 ${t1.livePoints > t2.livePoints ? 'bg-blue-50/50' : ''}">
-                                    <div class="text-xs text-gray-500 truncate">${t1Name}</div>
-                                    <div class="text-sm sm:text-base truncate ${t1.livePoints > t2.livePoints ? 'font-bold text-gray-900' : 'text-gray-700'}">${t1.entry_name}</div>
+                        <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden">
+                            <div class="flex items-stretch h-16">
+                                <div class="flex-1 flex flex-col justify-center px-3 min-w-0 ${t1.livePoints > t2.livePoints ? 'bg-emerald-950/30' : ''}">
+                                    <div class="text-[10px] text-gray-400 truncate">${t1Name}</div>
+                                    <div class="text-xs sm:text-sm font-bold truncate ${t1.livePoints > t2.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t1.entry_name}</div>
                                 </div>
-                                <div class="w-24 flex items-center justify-center bg-gray-50 border-x border-gray-100">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-xl ${t1.livePoints > t2.livePoints ? 'text-blue-600 font-black' : 'text-gray-800 font-bold'}">${t1.livePoints}</span>
-                                        <span class="text-gray-300 text-sm">-</span>
-                                        <span class="text-xl ${t2.livePoints > t1.livePoints ? 'text-blue-600 font-black' : 'text-gray-800 font-bold'}">${t2.livePoints}</span>
+                                <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0">
+                                    <div class="flex items-center space-x-1.5 font-bold">
+                                        <span class="text-base ${t1.livePoints > t2.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t1.livePoints}</span>
+                                        <span class="text-gray-600 text-xs">-</span>
+                                        <span class="text-base ${t2.livePoints > t1.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t2.livePoints}</span>
                                     </div>
                                 </div>
-                                <div class="flex-1 flex flex-col justify-center px-4 text-right ${t2.livePoints > t1.livePoints ? 'bg-blue-50/50' : ''}">
-                                    <div class="text-xs text-gray-500 truncate">${t2Name}</div>
-                                    <div class="text-sm sm:text-base truncate ${t2.livePoints > t1.livePoints ? 'font-bold text-gray-900' : 'text-gray-700'}">${t2.entry_name}</div>
+                                <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0 ${t2.livePoints > t1.livePoints ? 'bg-emerald-950/30' : ''}">
+                                    <div class="text-[10px] text-gray-400 truncate">${t2Name}</div>
+                                    <div class="text-xs sm:text-sm font-bold truncate ${t2.livePoints > t1.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t2.entry_name}</div>
                                 </div>
                             </div>
                         </div>`;
@@ -419,9 +515,9 @@
                 const isH2H = matches.length > 0;
                 
                 if (isH2H) {
-                    thead.innerHTML = `<tr><th class="px-4 py-3 text-center w-8">#</th><th class="px-2 py-3 text-center w-6"></th><th class="px-4 py-3">Team</th><th class="px-4 py-3 text-center">Live W-D-L</th><th class="px-4 py-3 text-center">FPL Pts</th><th class="px-4 py-3 text-center bg-blue-50 font-bold text-blue-700">H2H Pts</th></tr>`;
+                    thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">W-D-L</th><th class="px-2.5 py-2 text-center">Pts</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th></tr>`;
                 } else {
-                    thead.innerHTML = `<tr><th class="px-4 py-3 text-center w-8">#</th><th class="px-2 py-3 text-center w-6"></th><th class="px-4 py-3">Team</th><th class="px-4 py-3 text-center">Total Pts</th><th class="px-4 py-3 text-center bg-blue-50 font-bold text-blue-700">Live Pts</th></tr>`;
+                    thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th></tr>`;
                 }
 
                 let liveH2H = {};
@@ -432,7 +528,7 @@
                     const p2 = State.entries[entry2]?.livePoints || 0;
                     
                     liveH2H[entry1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
-                    liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p1===p2?1:0, l: p2<p1?1:0 };
+                    liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p2===p2?1:0, l: p2<p1?1:0 };
                 });
 
                 let tableData = (State.leagueDetails.standings || []).map(s => {
@@ -455,31 +551,31 @@
                 tableData.forEach((team, idx) => {
                     const currentRank = idx + 1;
                     const prevRank = team.rank || 999;
-                    let rankIcon = '<svg class="w-4 h-4 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
-                    if (currentRank < prevRank) rankIcon = '<svg class="w-4 h-4 mx-auto arrow-up" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>';
-                    else if (currentRank > prevRank) rankIcon = '<svg class="w-4 h-4 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
+                    let rankIcon = '<svg class="w-3.5 h-3.5 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
+                    if (currentRank < prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-up" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>';
+                    else if (currentRank > prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
 
-                    const rowClass = team.league_entry === State.myTeamId ? 'bg-blue-50/30' : 'bg-white';
+                    const rowClass = team.league_entry === State.myTeamId ? 'bg-emerald-950/20' : 'bg-gray-800/40';
                     const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
 
                     if(isH2H) {
                         tbody.innerHTML += `
-                            <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
-                                <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
-                                <td class="px-2 py-4 text-center">${rankIcon}</td>
-                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${fName}</div></td>
-                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>
-                                <td class="px-4 py-4 text-center text-sm font-semibold text-gray-700">${team.projectedTotalFPL}</td>
-                                <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.projectedH2HPts}</td>
+                            <tr class="hover:bg-gray-700/30 transition-colors ${rowClass}">
+                                <td class="px-3 py-2.5 text-center font-medium text-gray-400 text-xs">${currentRank}</td>
+                                <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
+                                <td class="px-3 py-2.5"><div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-[10px] text-gray-400">${fName}</div></td>
+                                <td class="px-2.5 py-2.5 text-center text-xs text-gray-300 font-mono">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>
+                                <td class="px-2.5 py-2.5 text-center text-xs font-semibold text-gray-300">${team.projectedTotalFPL}</td>
+                                <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.projectedH2HPts}</td>
                             </tr>`;
                     } else {
                         tbody.innerHTML += `
-                            <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
-                                <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
-                                <td class="px-2 py-4 text-center">${rankIcon}</td>
-                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${fName}</div></td>
-                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.projectedTotalFPL}</td>
-                                <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.liveFPLPts}</td>
+                            <tr class="hover:bg-gray-700/30 transition-colors ${rowClass}">
+                                <td class="px-3 py-2.5 text-center font-medium text-gray-400 text-xs">${currentRank}</td>
+                                <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
+                                <td class="px-3 py-2.5"><div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-[10px] text-gray-400">${fName}</div></td>
+                                <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
+                                <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.liveFPLPts}</td>
                             </tr>`;
                     }
                 });
@@ -538,24 +634,62 @@
             },
             getLiveScores: () => ({ 
                 elements: {
-                    1: { stats: { total_points: Math.floor(Math.random() * 10), minutes: 90 } },
-                    2: { stats: { total_points: Math.floor(Math.random() * 5), minutes: 75 } },
-                    3: { stats: { total_points: Math.floor(Math.random() * 12), minutes: 90 } },
-                    4: { stats: { total_points: Math.floor(Math.random() * 17), minutes: 90 } },
-                    5: { stats: { total_points: Math.floor(Math.random() * 8), minutes: 90 } },
-                    6: { stats: { total_points: Math.floor(Math.random() * 6), minutes: 90 } },
-                    7: { stats: { total_points: Math.floor(Math.random() * 6), minutes: 90 } },
-                    8: { stats: { total_points: Math.floor(Math.random() * 2), minutes: 90 } },
-                    9: { stats: { total_points: Math.floor(Math.random() * 9), minutes: 90 } },
+                    1: { stats: { total_points: 8, minutes: 90, goals_scored: 1 } },
+                    2: { stats: { total_points: 5, minutes: 75, assists: 1 } },
+                    3: { stats: { total_points: 12, minutes: 90, goals_scored: 2 } },
+                    4: { stats: { total_points: 17, minutes: 90, goals_scored: 3, assists: 1 } },
+                    5: { stats: { total_points: 8, minutes: 90, yellow_cards: 1 } },
+                    6: { stats: { total_points: 6, minutes: 90, clean_sheets: 1 } },
+                    7: { stats: { total_points: 6, minutes: 90, clean_sheets: 1 } },
+                    8: { stats: { total_points: 2, minutes: 90 } },
+                    9: { stats: { total_points: 9, minutes: 90, clean_sheets: 1, assists: 1 } },
                     10: { stats: { total_points: 0, minutes: 0 } },
-                    11: { stats: { total_points: Math.floor(Math.random() * 5), minutes: 60 } },
+                    11: { stats: { total_points: 5, minutes: 60, goals_scored: 1 } },
                     12: { stats: { total_points: 0, minutes: 0 } },
                     13: { stats: { total_points: 0, minutes: 0 } },
-                    14: { stats: { total_points: Math.floor(Math.random() * 5), minutes: 90 } },
+                    14: { stats: { total_points: 5, minutes: 90 } },
                     15: { stats: { total_points: 0, minutes: 0 } }
                 } 
             })
         };
+
+        // Pull-to-refresh implementation for mobile browsers
+        let touchstartY = 0;
+        let touchendY = 0;
+        const mainContainer = document.getElementById('main-scroll-container');
+        const ptrEl = document.getElementById('ptr-element');
+
+        mainContainer.addEventListener('touchstart', e => {
+            touchstartY = e.changedTouches[0].screenY;
+        }, {passive: true});
+
+        mainContainer.addEventListener('touchmove', e => {
+            touchendY = e.changedTouches[0].screenY;
+            if (mainContainer.scrollTop === 0 && touchendY > touchstartY) {
+                const pullDist = Math.min(touchendY - touchstartY, 120);
+                ptrEl.style.transform = `translateY(${pullDist}px)`;
+                ptrEl.style.opacity = `${pullDist / 80}`;
+                if (pullDist > 70) {
+                    document.getElementById('ptr-text').innerText = 'Release to refresh';
+                }
+            }
+        }, {passive: true});
+
+        mainContainer.addEventListener('touchend', e => {
+            touchendY = e.changedTouches[0].screenY;
+            if (mainContainer.scrollTop === 0 && (touchendY - touchstartY) > 70) {
+                ptrEl.style.transform = `translateY(56px)`;
+                document.getElementById('ptr-text').innerText = 'Refreshing...';
+                API.refreshData(true).then(() => {
+                    ptrEl.style.transform = `translateY(0px)`;
+                    ptrEl.style.opacity = '0';
+                    document.getElementById('ptr-text').innerText = 'Pull down to refresh...';
+                });
+            } else {
+                ptrEl.style.transform = `translateY(0px)`;
+                ptrEl.style.opacity = '0';
+            }
+        }, {passive: true});
 
         window.onload = API.init;
     </script>
