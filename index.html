@@ -85,7 +85,6 @@
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm text-left">
                             <thead id="live-table-head" class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
-                                <!-- Injected dynamically -->
                             </thead>
                             <tbody id="live-table-body" class="divide-y divide-gray-200"></tbody>
                         </table>
@@ -102,8 +101,7 @@
 
     <script>
         const CONFIG = {
-            LEAGUE_ID: 238, // Target League ID
-            // Pointing directly to your active Vercel backend so it works anywhere
+            LEAGUE_ID: 238,
             PROXY_URL: 'https://fpl-draft-app-iota.vercel.app/api/proxy?path=' 
         };
 
@@ -157,9 +155,8 @@
         const API = {
             fetchVercelProxy: async (endpoint) => {
                 try {
-                    // Use encodeURI to keep slashes intact but encode special characters
                     const fetchUrl = `${CONFIG.PROXY_URL}${encodeURI(endpoint)}`;
-                    console.log(`[FRONTEND] Fetching data from: ${fetchUrl}`);
+                    console.log(`[FRONTEND] Fetching: ${fetchUrl}`);
                     
                     const response = await fetch(fetchUrl);
                     
@@ -171,15 +168,12 @@
                         } catch(e) {
                             errBody = await response.text();
                         }
-                        throw new Error(`Endpoint '${endpoint}' failed with status ${response.status}. Details: ${errBody.substring(0, 100)}`);
+                        throw new Error(`Endpoint '${endpoint}' failed with status ${response.status}.`);
                     }
                     
                     return await response.json();
                 } catch (error) {
-                    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                        throw new Error("NETWORK_ERROR: Browser blocked the request or proxy is offline.");
-                    }
-                    throw error;
+                    throw error; // Re-throw to be caught by the main init function
                 }
             },
             
@@ -191,13 +185,26 @@
                         State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
                         State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
                         
-                        const currentEvent = State.bootstrapStatic.events.find(e => e.is_current) || State.bootstrapStatic.events.find(e => e.is_next);
-                        State.currentGW = currentEvent ? currentEvent.id : 1;
+                        // FIX: Safely determine current gameweek.
+                        // First, try the dedicated Draft game endpoint
+                        try {
+                            const gameStatus = await API.fetchVercelProxy('game');
+                            State.currentGW = gameStatus.current_event || 1;
+                        } catch (e) {
+                            console.warn("Could not fetch 'game' endpoint, falling back to events object calculation");
+                            // Fallback if 'game' endpoint fails: Handle events as either Array or Object safely
+                            let eventsList = State.bootstrapStatic.events || [];
+                            if (!Array.isArray(eventsList)) {
+                                eventsList = Object.values(eventsList);
+                            }
+                            const currentEvent = eventsList.find(e => e.is_current) || eventsList.find(e => e.is_next);
+                            State.currentGW = currentEvent ? currentEvent.id : 1;
+                        }
+
+                        console.log(`[FRONTEND] Determined Current GW is: ${State.currentGW}`);
 
                         State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
-                        
-                        // We will add real PL fixtures parsing later, setting empty for now
-                        State.plFixtures = []; 
+                        State.plFixtures = []; // Will implement real PL fixtures later
 
                         for (const entry of State.leagueDetails.league_entries) {
                             try {
@@ -211,12 +218,12 @@
                         document.getElementById('live-indicator').classList.remove('hidden');
 
                     } catch (proxyError) {
-                        console.error("[FRONTEND] Proxy fetch failed. Reason:", proxyError);
-                        
+                        console.error("[FRONTEND] API Fetch Error:", proxyError);
                         UI.showError(`Error Fetching Data: ${proxyError.message}`);
                         
-                        await new Promise(r => setTimeout(r, 4000));
+                        await new Promise(r => setTimeout(r, 4000)); // Show error for 4 seconds
                         
+                        // Fallback to Mock Data
                         State.isUsingMockData = true;
                         UI.showLoading('Loading Mock Data...', 'Previewing UI without live connection.');
                         document.getElementById('mock-indicator').classList.remove('hidden');
@@ -232,6 +239,7 @@
                         });
                     }
 
+                    // Process loaded data (Live or Mock)
                     State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
                     document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
                     
@@ -254,7 +262,7 @@
                     UI.switchTab('my-team');
                     
                 } catch (error) {
-                    UI.showError("Critical initialization error. See console.");
+                    UI.showError("Critical initialization error: " + error.message);
                     console.error(error);
                 }
             }
