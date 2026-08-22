@@ -19,7 +19,13 @@ export default async function handler(req, res) {
     }
 
     try {
-        const targetUrl = `https://draft.premierleague.com/api/${path.replace(/^\/+/, '')}`;
+        const cleanPath = path.replace(/^\/+/, '');
+        
+        // Route 'fixtures' to Classic FPL API, everything else to Draft API
+        const targetUrl = cleanPath.startsWith('fixtures') 
+            ? `https://fantasy.premierleague.com/api/${cleanPath}`
+            : `https://draft.premierleague.com/api/${cleanPath}`;
+            
         console.log(`[PROXY] Attempting to fetch from FPL: ${targetUrl}`);
         
         const response = await fetch(targetUrl, {
