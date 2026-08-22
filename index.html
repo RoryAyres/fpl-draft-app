@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -29,6 +28,7 @@
             <div class="text-sm font-medium bg-gray-100 px-3 py-1 rounded-full text-gray-600 flex items-center space-x-2">
                 <span>League: <span id="league-name-display">Loading...</span></span>
                 <span id="live-indicator" class="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden" title="Connected to Live Data"></span>
+                <span id="mock-indicator" class="w-2 h-2 rounded-full bg-yellow-400 hidden" title="Using Mock Data"></span>
             </div>
         </div>
         
@@ -43,11 +43,10 @@
         <div id="loading-overlay" class="absolute inset-0 bg-gray-50 bg-opacity-90 flex flex-col items-center justify-center z-50">
             <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
             <h2 class="text-center text-gray-600 text-sm font-medium" id="loading-text">Fetching live data...</h2>
-            <p class="text-xs text-gray-400 mt-2" id="loading-subtext"></p>
+            <p class="text-xs text-gray-400 mt-2 max-w-xs text-center" id="loading-subtext"></p>
         </div>
 
         <div class="max-w-4xl mx-auto px-4 py-6 pb-20">
-            <!-- My Team Tab -->
             <div id="content-my-team" class="tab-content hidden">
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
                     <div class="bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-4 flex justify-between items-center text-white">
@@ -72,7 +71,6 @@
                 </div>
             </div>
 
-            <!-- Fixtures Tab -->
             <div id="content-fixtures" class="tab-content hidden">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-bold text-gray-800">H2H Matchups</h2>
@@ -81,14 +79,13 @@
                 <div id="fixtures-list" class="space-y-4"></div>
             </div>
 
-            <!-- Live Table Tab -->
             <div id="content-table" class="tab-content hidden">
                 <h2 class="text-lg font-bold text-gray-800 mb-4">Live League Standings</h2>
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm text-left">
                             <thead id="live-table-head" class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
-                                <!-- Injected dynamically based on format -->
+                                <!-- Injected dynamically -->
                             </thead>
                             <tbody id="live-table-body" class="divide-y divide-gray-200"></tbody>
                         </table>
@@ -97,7 +94,7 @@
             </div>
             
             <div id="error-message" class="hidden mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-                <strong class="font-bold">Error!</strong>
+                <strong class="font-bold">Notice:</strong>
                 <span class="block sm:inline" id="error-text">Something went wrong.</span>
             </div>
         </div>
@@ -105,8 +102,9 @@
 
     <script>
         const CONFIG = {
-            LEAGUE_ID: 238,
-            PROXY_URL: '/api/proxy?path=' 
+            LEAGUE_ID: 238, // Target League ID
+            // Pointing directly to your active Vercel backend so it works anywhere
+            PROXY_URL: 'https://fpl-draft-app-iota.vercel.app/api/proxy?path=' 
         };
 
         const State = {
@@ -136,7 +134,6 @@
             showError: (msg) => {
                 document.getElementById('error-text').innerText = msg;
                 document.getElementById('error-message').classList.remove('hidden');
-                UI.hideLoading();
             },
             switchTab: (tabId) => {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -159,14 +156,29 @@
 
         const API = {
             fetchVercelProxy: async (endpoint) => {
-                const response = await fetch(`${CONFIG.PROXY_URL}${encodeURIComponent(endpoint)}`);
-                if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
-                return await response.json();
+                try {
+                    // Use encodeURI to keep slashes intact but encode special characters
+                    const fetchUrl = `${CONFIG.PROXY_URL}${encodeURI(endpoint)}`;
+                    console.log(`[FRONTEND] Fetching data from: ${fetchUrl}`);
+                    
+                    const response = await fetch(fetchUrl);
+                    
+                    if (response.status === 404) throw new Error("PROXY_NOT_FOUND");
+                    if (response.status === 403) throw new Error("CLOUDFLARE_BLOCKED");
+                    if (!response.ok) throw new Error(`API error: ${response.status}`);
+                    
+                    return await response.json();
+                } catch (error) {
+                    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                        throw new Error("NETWORK_ERROR");
+                    }
+                    throw error;
+                }
             },
             
             init: async () => {
                 try {
-                    UI.showLoading('Connecting to Premier League API...', 'Attempting to fetch live data via Vercel proxy.');
+                    UI.showLoading('Connecting to Premier League API...', `Loading League ID: ${CONFIG.LEAGUE_ID}`);
                     
                     try {
                         State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
@@ -176,6 +188,8 @@
                         State.currentGW = currentEvent ? currentEvent.id : 1;
 
                         State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
+                        
+                        // We will add real PL fixtures parsing later, setting empty for now
                         State.plFixtures = []; 
 
                         for (const entry of State.leagueDetails.league_entries) {
@@ -190,10 +204,19 @@
                         document.getElementById('live-indicator').classList.remove('hidden');
 
                     } catch (proxyError) {
-                        console.warn(proxyError.message + " - Falling back to local Mock Data.");
+                        console.error("[FRONTEND] Proxy fetch failed. Reason:", proxyError);
+                        
+                        let errorMessage = "Failed to load live data.";
+                        if (proxyError.message === "PROXY_NOT_FOUND") errorMessage = "Proxy is returning a 404. Check Vercel deployment.";
+                        else if (proxyError.message === "CLOUDFLARE_BLOCKED") errorMessage = "FPL Cloudflare is currently blocking your Vercel server (403).";
+                        
+                        UI.showError(`${errorMessage} Falling back to mock data for preview.`);
+                        
+                        await new Promise(r => setTimeout(r, 2000));
+                        
                         State.isUsingMockData = true;
-                        UI.showLoading('Proxy not found or offline. Loading Mock Data...', 'Deploy to Vercel for live data.');
-                        await new Promise(r => setTimeout(r, 800));
+                        UI.showLoading('Loading Mock Data...', 'Previewing UI without live connection.');
+                        document.getElementById('mock-indicator').classList.remove('hidden');
                         
                         State.bootstrapStatic = MockData.getBootstrap();
                         State.leagueDetails = MockData.getLeague();
@@ -228,7 +251,7 @@
                     UI.switchTab('my-team');
                     
                 } catch (error) {
-                    UI.showError("Failed to initialize app data. Check console for details.");
+                    UI.showError("Critical initialization error. See console.");
                     console.error(error);
                 }
             }
@@ -372,11 +395,11 @@
                         ...s,
                         entryDetails: State.entries[s.league_entry],
                         liveFPLPts: livePts,
-                        projectedH2HPts: s.total + h2hUpdate.pts,
+                        projectedH2HPts: (s.total || 0) + h2hUpdate.pts,
                         projectedTotalFPL: (s.points_for || s.total || 0) + livePts,
-                        projectedW: s.matches_won + h2hUpdate.w,
-                        projectedD: s.matches_drawn + h2hUpdate.d,
-                        projectedL: s.matches_lost + h2hUpdate.l
+                        projectedW: (s.matches_won || 0) + h2hUpdate.w,
+                        projectedD: (s.matches_drawn || 0) + h2hUpdate.d,
+                        projectedL: (s.matches_lost || 0) + h2hUpdate.l
                     };
                 });
 
@@ -384,7 +407,7 @@
 
                 tableData.forEach((team, idx) => {
                     const currentRank = idx + 1;
-                    const prevRank = team.rank;
+                    const prevRank = team.rank || 999;
                     let rankIcon = '<svg class="w-4 h-4 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
                     if (currentRank < prevRank) rankIcon = '<svg class="w-4 h-4 mx-auto arrow-up" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>';
                     else if (currentRank > prevRank) rankIcon = '<svg class="w-4 h-4 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
@@ -396,7 +419,7 @@
                             <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
                                 <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
                                 <td class="px-2 py-4 text-center">${rankIcon}</td>
-                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name}</div></td>
+                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name || ''}</div></td>
                                 <td class="px-4 py-4 text-center text-sm text-gray-600">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>
                                 <td class="px-4 py-4 text-center text-sm font-semibold text-gray-700">${team.projectedTotalFPL}</td>
                                 <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.projectedH2HPts}</td>
@@ -406,8 +429,8 @@
                             <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
                                 <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
                                 <td class="px-2 py-4 text-center">${rankIcon}</td>
-                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name}</div></td>
-                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.total}</td>
+                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name || ''}</div></td>
+                                <td class="px-4 py-4 text-center text-sm text-gray-600">${team.total || 0}</td>
                                 <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.liveFPLPts}</td>
                             </tr>`;
                     }
@@ -416,11 +439,74 @@
         };
 
         const MockData = {
-            getBootstrap: () => ({ events: [{ id: 1, is_current: true }], teams: [], elements: [] }),
-            getLeague: () => ({ league: { name: "Draft League 238" }, league_entries: [], standings: [], matches: [] }),
-            getPLFixtures: () => ([]),
-            getTeamEvent: (id) => ({ picks: [] }),
-            getLiveScores: () => ({ elements: {} })
+            getBootstrap: () => ({ 
+                events: [{ id: 1, is_current: true }], 
+                teams: [{id: 1, short_name: "ARS"}, {id: 2, short_name: "AVL"}, {id: 3, short_name: "BOU"}, {id: 4, short_name: "BRE"}, {id: 5, short_name: "BHA"}, {id: 6, short_name: "CFC"}], 
+                elements: [
+                    { id: 1, web_name: "Saka", element_type: 3, team: 1 },
+                    { id: 2, web_name: "Odegaard", element_type: 3, team: 1 },
+                    { id: 3, web_name: "Watkins", element_type: 4, team: 2 },
+                    { id: 4, web_name: "Haaland", element_type: 4, team: 5 },
+                    { id: 5, web_name: "Palmer", element_type: 3, team: 6 },
+                    { id: 6, web_name: "Raya", element_type: 1, team: 1 },
+                    { id: 7, web_name: "Saliba", element_type: 2, team: 1 },
+                    { id: 8, web_name: "Porro", element_type: 2, team: 3 },
+                    { id: 9, web_name: "Trent", element_type: 2, team: 4 },
+                    { id: 10, web_name: "Eze", element_type: 3, team: 5 },
+                    { id: 11, web_name: "Mbeumo", element_type: 3, team: 4 },
+                    { id: 12, web_name: "Pickford", element_type: 1, team: 2 },
+                    { id: 13, web_name: "Trippier", element_type: 2, team: 6 },
+                    { id: 14, web_name: "Solanke", element_type: 4, team: 3 },
+                    { id: 15, web_name: "Gordon", element_type: 3, team: 6 }
+                ] 
+            }),
+            getLeague: () => ({ 
+                league: { name: "Mock Draft League" }, 
+                league_entries: [
+                    { entry_id: 101, entry_name: "Lads on Toure", player_first_name: "John", player_last_name: "Doe" },
+                    { entry_id: 102, entry_name: "Saka Potatoes", player_first_name: "Jane", player_last_name: "Smith" },
+                    { entry_id: 103, entry_name: "Pique Blinders", player_first_name: "Mike", player_last_name: "Jones" },
+                    { entry_id: 104, entry_name: "Alisson Wonderland", player_first_name: "Sarah", player_last_name: "Lee" }
+                ], 
+                standings: [
+                    { league_entry: 101, rank: 2, total: 200, points_for: 3500, matches_won: 10, matches_drawn: 2, matches_lost: 4 },
+                    { league_entry: 102, rank: 1, total: 205, points_for: 3600, matches_won: 11, matches_drawn: 0, matches_lost: 5 },
+                    { league_entry: 103, rank: 3, total: 195, points_for: 3400, matches_won: 9, matches_drawn: 1, matches_lost: 6 },
+                    { league_entry: 104, rank: 4, total: 180, points_for: 3200, matches_won: 7, matches_drawn: 0, matches_lost: 9 }
+                ], 
+                matches: [
+                    { event: 1, league_entry_1: 101, league_entry_2: 102 },
+                    { event: 1, league_entry_1: 103, league_entry_2: 104 }
+                ] 
+            }),
+            getPLFixtures: () => ([
+                { team_h: 1, team_a: 2, started: true, finished: false },
+                { team_h: 3, team_a: 4, started: true, finished: true },
+                { team_h: 5, team_a: 6, started: false, finished: false }
+            ]),
+            getTeamEvent: (id) => {
+                if (id === 101) return { picks: [ { element: 6, position: 1 }, { element: 7, position: 2 }, { element: 8, position: 3 }, { element: 9, position: 4 }, { element: 1, position: 5 }, { element: 2, position: 6 }, { element: 5, position: 7 }, { element: 10, position: 8 }, { element: 11, position: 9 }, { element: 3, position: 10 }, { element: 4, position: 11 }, { element: 12, position: 12 }, { element: 13, position: 13 }, { element: 15, position: 14 }, { element: 14, position: 15 } ] };
+                return { picks: [ { element: 4, position: 1 }, { element: 1, position: 2 } ] };
+            },
+            getLiveScores: () => ({ 
+                elements: {
+                    1: { stats: { total_points: Math.floor(Math.random() * 10), minutes: 90 } },
+                    2: { stats: { total_points: Math.floor(Math.random() * 5), minutes: 75 } },
+                    3: { stats: { total_points: Math.floor(Math.random() * 12), minutes: 90 } },
+                    4: { stats: { total_points: Math.floor(Math.random() * 17), minutes: 90 } },
+                    5: { stats: { total_points: Math.floor(Math.random() * 8), minutes: 90 } },
+                    6: { stats: { total_points: Math.floor(Math.random() * 6), minutes: 90 } },
+                    7: { stats: { total_points: Math.floor(Math.random() * 6), minutes: 90 } },
+                    8: { stats: { total_points: Math.floor(Math.random() * 2), minutes: 90 } },
+                    9: { stats: { total_points: Math.floor(Math.random() * 9), minutes: 90 } },
+                    10: { stats: { total_points: 0, minutes: 0 } },
+                    11: { stats: { total_points: Math.floor(Math.random() * 5), minutes: 60 } },
+                    12: { stats: { total_points: 0, minutes: 0 } },
+                    13: { stats: { total_points: 0, minutes: 0 } },
+                    14: { stats: { total_points: Math.floor(Math.random() * 5), minutes: 90 } },
+                    15: { stats: { total_points: 0, minutes: 0 } }
+                } 
+            })
         };
 
         window.onload = API.init;
