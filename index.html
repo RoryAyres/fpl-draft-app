@@ -53,7 +53,7 @@
                 <div class="text-xs font-medium bg-gray-900/60 px-2.5 py-1 rounded-full text-gray-300 border border-gray-700/50 flex items-center space-x-1.5">
                     <span class="truncate max-w-[100px]" id="league-name-display">Loading...</span>
                     <span id="header-gw-status" class="border-l border-gray-700 pl-1.5 text-emerald-400 font-bold hidden"></span>
-                    <span id="live-indicator" class="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden" title="Connected"></span>
+                    <span id="live-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden" title="Connected"></span>
                     <span id="mock-indicator" class="w-2 h-2 rounded-full bg-amber-400 hidden" title="Mock Mode"></span>
                 </div>
             </div>
@@ -75,7 +75,6 @@
 
         <div class="max-w-4xl mx-auto px-2.5 py-3">
             
-            <!-- My Team Tab Content -->
             <div id="content-my-team" class="tab-content hidden space-y-3">
                 <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
                     <div class="bg-gradient-to-r from-emerald-800 to-emerald-600 px-3.5 py-2.5 flex justify-between items-center text-white">
@@ -108,12 +107,10 @@
                 </div>
             </div>
 
-            <!-- Fixtures Tab Content -->
             <div id="content-fixtures" class="tab-content hidden space-y-2.5">
                 <div id="fixtures-list" class="space-y-2 mt-1"></div>
             </div>
 
-            <!-- Live Table Tab Content -->
             <div id="content-table" class="tab-content hidden space-y-2.5">
                 <h2 class="text-sm font-bold text-gray-200 px-1 mb-1">Live Standings</h2>
                 <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
@@ -205,18 +202,24 @@
                 const ownGoals = stats.own_goals || 0;
                 const penaltiesSaved = stats.penalties_saved || 0;
                 const penaltiesMissed = stats.penalties_missed || 0;
+                const saves = stats.saves || 0;
+                const bonus = stats.bonus || 0;
+                
+                const savePoints = Math.floor(saves / 3);
 
                 for(let i=0; i<goals; i++) badges.push('⚽');
                 for(let i=0; i<assists; i++) badges.push('👟'); 
                 for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
                 for(let i=0; i<penaltiesSaved; i++) badges.push('🧤');
+                for(let i=0; i<savePoints; i++) badges.push('👐');
                 for(let i=0; i<yellowCards; i++) badges.push('🟨');
                 for(let i=0; i<redCards; i++) badges.push('🟥');
                 for(let i=0; i<penaltiesMissed; i++) badges.push('❌');
                 for(let i=0; i<ownGoals; i++) badges.push('⚠️');
+                for(let i=0; i<bonus; i++) badges.push('✨');
 
                 if (badges.length === 0) return '';
-                return `<span class="inline-flex items-center space-x-0.5 ml-1 text-[11px]">${badges.join('')}</span>`;
+                return `<span class="inline-flex items-center space-x-0.5 mx-1 text-[11px]">${badges.join('')}</span>`;
             }
         };
 
@@ -386,7 +389,7 @@
                 
                 let status = 'Soon', colorClass = 'text-gray-400 bg-gray-800 border-gray-700';
                 if (fixture.finished || fixture.finished_provisional || (fixture.started && fixture.minutes >= 90)) { 
-                    status = 'FT'; colorClass = 'text-gray-300 bg-gray-700/60 border-gray-600'; 
+                    status = 'FT'; colorClass = 'text-gray-400 bg-gray-800/80 border-gray-700'; 
                 } 
                 else if (fixture.started) { 
                     status = 'Live'; colorClass = 'text-emerald-400 bg-emerald-950/80 border-emerald-700/60 animate-pulse'; 
@@ -418,6 +421,9 @@
                     const fix = Render.getFixtureStatus(pStat.team);
                     const statBadges = UI.formatStatBadges(stats);
                     
+                    const isPlayed = fix.status === 'Live' || fix.status === 'FT';
+                    const ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-100';
+                    
                     const minBadge = (fix.status === 'Live' || fix.status === 'FT') 
                         ? `<span class="ml-1 px-1 py-0.5 rounded ${isBench ? 'bg-gray-800 text-gray-400' : 'bg-gray-800 text-gray-300'} font-medium text-[9px] border border-gray-700">${mins}'</span>` 
                         : '';
@@ -426,7 +432,7 @@
                         <div class="flex items-center px-3 py-2 ${isBench ? 'opacity-50 bg-gray-900/40' : 'hover:bg-gray-800/40 transition-colors'}">
                             <div class="w-8 text-center flex-shrink-0"><span class="text-[9px] font-bold px-1 py-0.5 rounded border ${UI.getPosClass(pStat.element_type)}">${UI.getPosName(pStat.element_type)}</span></div>
                             <div class="flex-grow pl-2 min-w-0 flex flex-col justify-center">
-                                <div class="flex items-center space-x-1 truncate">
+                                <div class="flex items-center space-x-0 truncate">
                                     <span class="text-xs font-semibold text-gray-100 truncate">${pStat.web_name || 'Unknown'}</span>
                                     ${statBadges}
                                 </div>
@@ -436,7 +442,7 @@
                                 <span class="font-medium text-gray-300">${fix.opponent} ${fix.isHome ? '(H)' : '(A)'}</span>
                                 <span class="text-[9px] px-1.5 py-0.2 rounded border mt-0.5 ${fix.colorClass}">${fix.status}</span>
                             </div>
-                            <div class="w-12 text-right flex-shrink-0"><span class="text-sm font-bold ${isBench ? 'text-gray-400' : (pts >= 6 ? 'text-emerald-400' : pts <= 0 ? 'text-rose-400' : 'text-gray-200')}">${pts}</span></div>
+                            <div class="w-12 text-right flex-shrink-0"><span class="text-sm font-bold ${isBench ? 'text-gray-500' : ptsColor}">${pts}</span></div>
                         </div>`;
                 };
 
@@ -463,23 +469,45 @@
                     return;
                 }
 
-                // Helper to build a highly condensed side-by-side player row
-                const buildCondensedPlayer = (pick, isBench) => {
+                const buildCondensedPlayer = (pick, isBench, isAway) => {
                     if (!pick) return '';
                     const pStat = State.getStaticPlayer(pick.element);
                     const pts = State.getLivePoints(pick.element);
                     const stats = State.getLiveStats(pick.element);
+                    const mins = State.getLiveMinutes(pick.element);
+                    const fix = Render.getFixtureStatus(pStat.team);
                     const statBadges = UI.formatStatBadges(stats);
                     
-                    return `
-                    <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${isBench ? 'opacity-50' : ''}">
-                        <div class="flex items-center truncate min-w-0 pr-1">
-                            <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
-                            <span class="text-[10px] font-semibold text-gray-200 truncate">${pStat.web_name || 'Unknown'}</span>
-                            ${statBadges}
-                        </div>
-                        <div class="font-bold text-[11px] ${pts >= 6 ? 'text-emerald-400' : pts <= 0 ? 'text-rose-400' : 'text-gray-200'} flex-shrink-0">${pts}</div>
-                    </div>`;
+                    const isPlayed = fix.status === 'Live' || fix.status === 'FT';
+                    const ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-100';
+
+                    const statusInd = isPlayed 
+                        ? `<span class="text-[8px] px-1 font-semibold ${fix.status === 'Live' ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${fix.status === 'Live' ? mins + '\'' : 'FT'}</span>` 
+                        : `<span class="text-[8px] px-1 font-semibold text-gray-600">Soon</span>`;
+                    
+                    if (isAway) {
+                        return `
+                        <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${isBench ? 'opacity-50' : ''}">
+                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${pts}</div>
+                            <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
+                                ${statusInd}
+                                ${statBadges}
+                                <span class="text-[10px] font-semibold text-gray-200 truncate ml-1 mr-1.5">${pStat.web_name || 'Unknown'}</span>
+                                <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                            </div>
+                        </div>`;
+                    } else {
+                        return `
+                        <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${isBench ? 'opacity-50' : ''}">
+                            <div class="flex items-center truncate min-w-0 pr-1 w-full">
+                                <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                                <span class="text-[10px] font-semibold text-gray-200 truncate mr-1">${pStat.web_name || 'Unknown'}</span>
+                                ${statBadges}
+                                ${statusInd}
+                            </div>
+                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${pts}</div>
+                        </div>`;
+                    }
                 };
 
                 h2hMatches.forEach((match, idx) => {
@@ -511,17 +539,17 @@
 
                         detailsHtml = `
                             <div class="flex p-2">
-                                <div class="w-1/2 pr-1.5 border-r border-gray-700/50">
+                                <div class="w-1/2 pr-1 border-r border-gray-700/50">
                                     <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider">Starters</div>
-                                    ${t1Starters.map(p => buildCondensedPlayer(p, false)).join('')}
-                                    <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider">Bench</div>
-                                    ${t1Bench.map(p => buildCondensedPlayer(p, true)).join('')}
+                                    ${t1Starters.map(p => buildCondensedPlayer(p, false, false)).join('')}
+                                    <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider text-right">Bench</div>
+                                    ${t1Bench.map(p => buildCondensedPlayer(p, true, false)).join('')}
                                 </div>
-                                <div class="w-1/2 pl-1.5">
-                                    <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider">Starters</div>
-                                    ${t2Starters.map(p => buildCondensedPlayer(p, false)).join('')}
+                                <div class="w-1/2 pl-1">
+                                    <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider text-right">Starters</div>
+                                    ${t2Starters.map(p => buildCondensedPlayer(p, false, true)).join('')}
                                     <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider">Bench</div>
-                                    ${t2Bench.map(p => buildCondensedPlayer(p, true)).join('')}
+                                    ${t2Bench.map(p => buildCondensedPlayer(p, true, true)).join('')}
                                 </div>
                             </div>
                         `;
@@ -530,7 +558,6 @@
                     listEl.innerHTML += `
                         <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
                             <div class="flex items-stretch h-16 relative">
-                                <!-- Expand chevron -->
                                 <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                 </div>
@@ -689,14 +716,14 @@
                     2: { stats: { total_points: 5, minutes: 75, assists: 1 } },
                     3: { stats: { total_points: 12, minutes: 90, goals_scored: 2 } },
                     4: { stats: { total_points: 17, minutes: 90, goals_scored: 3, assists: 1 } },
-                    5: { stats: { total_points: 8, minutes: 90, yellow_cards: 1 } },
+                    5: { stats: { total_points: 8, minutes: 90, yellow_cards: 1, bonus: 2 } },
                     6: { stats: { total_points: 6, minutes: 90, clean_sheets: 1 } },
                     7: { stats: { total_points: 6, minutes: 90, clean_sheets: 1 } },
                     8: { stats: { total_points: 2, minutes: 90 } },
-                    9: { stats: { total_points: 9, minutes: 90, clean_sheets: 1, assists: 1 } },
+                    9: { stats: { total_points: 9, minutes: 90, clean_sheets: 1, assists: 1, bonus: 1 } },
                     10: { stats: { total_points: 0, minutes: 0 } },
                     11: { stats: { total_points: 5, minutes: 60, goals_scored: 1 } },
-                    12: { stats: { total_points: 0, minutes: 0 } },
+                    12: { stats: { total_points: 3, minutes: 90, saves: 4 } },
                     13: { stats: { total_points: 0, minutes: 0 } },
                     14: { stats: { total_points: 5, minutes: 90 } },
                     15: { stats: { total_points: 0, minutes: 0 } }
