@@ -201,12 +201,11 @@
                         console.log(`[FRONTEND] Determined Current GW is: ${State.currentGW}`);
 
                         State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
-                        
-                        // FIX: Fetch the actual gameweek fixtures to render opponent abbreviations correctly
                         State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
 
                         for (const entry of State.leagueDetails.league_entries) {
                             try {
+                                // Team picks are fetched using the global `entry_id`
                                 const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
                                 State.teamEvents[entry.entry_id] = teamData;
                             } catch (err) {
@@ -240,19 +239,22 @@
                     State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
                     document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
                     
+                    // FIX: Key the entries by `id` (league-specific) instead of `entry_id` (global)
                     State.leagueDetails.league_entries.forEach(entry => {
-                        State.entries[entry.entry_id] = { ...entry, livePoints: 0 };
+                        State.entries[entry.id] = { ...entry, livePoints: 0 };
                     });
                     
-                    State.myTeamId = State.leagueDetails.league_entries[0]?.entry_id;
+                    // Ensure the myTeamId reference also uses the league-specific `id`
+                    State.myTeamId = State.leagueDetails.league_entries[0]?.id;
 
                     State.leagueDetails.league_entries.forEach(entry => {
+                        // Access team events using the global `entry_id`
                         const lineup = State.teamEvents[entry.entry_id];
                         let total = 0;
                         if(lineup && lineup.picks) {
                             lineup.picks.forEach(p => { if (p.position <= 11) total += State.getLivePoints(p.element); });
                         }
-                        State.entries[entry.entry_id].livePoints = total;
+                        State.entries[entry.id].livePoints = total;
                     });
 
                     UI.hideLoading();
@@ -288,11 +290,16 @@
 
             myTeam: () => {
                 const teamInfo = State.entries[State.myTeamId];
-                const lineup = State.teamEvents[State.myTeamId];
+                // FIX: Retrieve lineup using the global `entry_id` tied to this team
+                const lineup = teamInfo ? State.teamEvents[teamInfo.entry_id] : null;
+                
                 if (!teamInfo || !lineup) return;
 
+                // User Preference Override: Display format for name on the front end
+                const formattedName = teamInfo.player_first_name === "Rory" ? "Rory A" : `${teamInfo.player_first_name} ${teamInfo.player_last_name}`;
+
                 document.getElementById('my-team-name').innerText = teamInfo.entry_name;
-                document.getElementById('my-manager-name').innerText = `${teamInfo.player_first_name} ${teamInfo.player_last_name}`;
+                document.getElementById('my-manager-name').innerText = formattedName;
                 document.getElementById('my-team-points').innerText = teamInfo.livePoints;
 
                 const listEl = document.getElementById('my-team-players-list');
@@ -340,7 +347,6 @@
                 const listEl = document.getElementById('fixtures-list');
                 listEl.innerHTML = '';
                 
-                // FIX: Use soft equality (==) for event matching and handle missing arrays
                 const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
 
                 if (h2hMatches.length === 0) {
@@ -349,17 +355,19 @@
                 }
 
                 h2hMatches.forEach(match => {
-                    // FIX: Add fallbacks for standard H2H property names
                     const t1 = State.entries[match.league_entry_1 || match.entry_1_entry];
                     const t2 = State.entries[match.league_entry_2 || match.entry_2_entry];
                     
                     if (!t1 || !t2) return;
                     
+                    const t1Name = t1.player_first_name === "Rory" ? "Rory A" : t1.player_first_name;
+                    const t2Name = t2.player_first_name === "Rory" ? "Rory A" : t2.player_first_name;
+
                     listEl.innerHTML += `
                         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                             <div class="flex items-stretch h-20">
                                 <div class="flex-1 flex flex-col justify-center px-4 ${t1.livePoints > t2.livePoints ? 'bg-blue-50/50' : ''}">
-                                    <div class="text-xs text-gray-500 truncate">${t1.player_first_name}</div>
+                                    <div class="text-xs text-gray-500 truncate">${t1Name}</div>
                                     <div class="text-sm sm:text-base truncate ${t1.livePoints > t2.livePoints ? 'font-bold text-gray-900' : 'text-gray-700'}">${t1.entry_name}</div>
                                 </div>
                                 <div class="w-24 flex items-center justify-center bg-gray-50 border-x border-gray-100">
@@ -370,7 +378,7 @@
                                     </div>
                                 </div>
                                 <div class="flex-1 flex flex-col justify-center px-4 text-right ${t2.livePoints > t1.livePoints ? 'bg-blue-50/50' : ''}">
-                                    <div class="text-xs text-gray-500 truncate">${t2.player_first_name}</div>
+                                    <div class="text-xs text-gray-500 truncate">${t2Name}</div>
                                     <div class="text-sm sm:text-base truncate ${t2.livePoints > t1.livePoints ? 'font-bold text-gray-900' : 'text-gray-700'}">${t2.entry_name}</div>
                                 </div>
                             </div>
@@ -428,24 +436,24 @@
                     else if (currentRank > prevRank) rankIcon = '<svg class="w-4 h-4 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
 
                     const rowClass = team.league_entry === State.myTeamId ? 'bg-blue-50/30' : 'bg-white';
-                    
+                    const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
+
                     if(isH2H) {
                         tbody.innerHTML += `
                             <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
                                 <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
                                 <td class="px-2 py-4 text-center">${rankIcon}</td>
-                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name || ''}</div></td>
+                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${fName}</div></td>
                                 <td class="px-4 py-4 text-center text-sm text-gray-600">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>
                                 <td class="px-4 py-4 text-center text-sm font-semibold text-gray-700">${team.projectedTotalFPL}</td>
                                 <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.projectedH2HPts}</td>
                             </tr>`;
                     } else {
-                        // FIX: Updated table logic to use the computed projectedTotalFPL variable
                         tbody.innerHTML += `
                             <tr class="hover:bg-gray-50 transition-colors ${rowClass}">
                                 <td class="px-4 py-4 text-center font-medium text-gray-500">${currentRank}</td>
                                 <td class="px-2 py-4 text-center">${rankIcon}</td>
-                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${team.entryDetails?.player_first_name || ''}</div></td>
+                                <td class="px-4 py-4"><div class="text-sm font-bold text-gray-900">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-xs text-gray-500">${fName}</div></td>
                                 <td class="px-4 py-4 text-center text-sm text-gray-600">${team.projectedTotalFPL}</td>
                                 <td class="px-4 py-4 text-center text-base font-bold text-blue-600 bg-blue-50/50">${team.liveFPLPts}</td>
                             </tr>`;
@@ -479,10 +487,10 @@
             getLeague: () => ({ 
                 league: { name: "Mock Draft League" }, 
                 league_entries: [
-                    { entry_id: 101, entry_name: "Lads on Toure", player_first_name: "John", player_last_name: "Doe" },
-                    { entry_id: 102, entry_name: "Saka Potatoes", player_first_name: "Jane", player_last_name: "Smith" },
-                    { entry_id: 103, entry_name: "Pique Blinders", player_first_name: "Mike", player_last_name: "Jones" },
-                    { entry_id: 104, entry_name: "Alisson Wonderland", player_first_name: "Sarah", player_last_name: "Lee" }
+                    { id: 101, entry_id: 101, entry_name: "Lads on Toure", player_first_name: "John", player_last_name: "Doe" },
+                    { id: 102, entry_id: 102, entry_name: "Saka Potatoes", player_first_name: "Jane", player_last_name: "Smith" },
+                    { id: 103, entry_id: 103, entry_name: "Pique Blinders", player_first_name: "Mike", player_last_name: "Jones" },
+                    { id: 104, entry_id: 104, entry_name: "Alisson Wonderland", player_first_name: "Sarah", player_last_name: "Lee" }
                 ], 
                 standings: [
                     { league_entry: 101, rank: 2, total: 200, points_for: 3500, matches_won: 10, matches_drawn: 2, matches_lost: 4 },
