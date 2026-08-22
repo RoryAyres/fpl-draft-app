@@ -227,16 +227,15 @@
                 const saves = stats.saves || 0;
                 const bonus = stats.bonus || 0;
                 
-                const defcons = stats.defensive_contributions || 0; 
-                
+                const defcons = stats.defensive_contributions || stats.defensive_contribution || 0; 
                 const savePoints = Math.floor(saves / 3);
 
                 for(let i=0; i<goals; i++) badges.push('⚽');
                 for(let i=0; i<assists; i++) badges.push('👟'); 
                 for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
-                for(let i=0; i<penaltiesSaved; i++) badges.push('🧤');
-                for(let i=0; i<savePoints; i++) badges.push('🧤');
-                for(let i=0; i<defcons; i++) badges.push('🧱');
+                for(let i=0; i<penaltiesSaved; i++) badges.push('🙅🏻');
+                if(savePoints > 0) badges.push('🧤');
+                if(defcons > 0) badges.push('🧱');
                 for(let i=0; i<yellowCards; i++) badges.push('🟨');
                 for(let i=0; i<redCards; i++) badges.push('🟥');
                 for(let i=0; i<penaltiesMissed; i++) badges.push('❌');
@@ -454,8 +453,8 @@
                             let nameStyle = 'text-gray-200';
                             
                             if (pick.isSubbedOut) {
-                                ptsColor = 'text-gray-600 line-through';
-                                nameStyle = 'text-gray-500 line-through';
+                                ptsColor = 'text-gray-500';
+                                nameStyle = 'text-gray-400';
                             } else if (pick.isSubbedIn) {
                                 ptsColor = 'text-emerald-300 font-extrabold';
                                 nameStyle = 'text-emerald-200';
@@ -675,7 +674,7 @@
                     3: { stats: { total_points: 12, minutes: 90, goals_scored: 2, defensive_contributions: 1 } },
                     4: { stats: { total_points: 17, minutes: 90, goals_scored: 3, assists: 1 } },
                     5: { stats: { total_points: 8, minutes: 90, yellow_cards: 1, bonus: 2 } },
-                    6: { stats: { total_points: 6, minutes: 90, clean_sheets: 1 } },
+                    6: { stats: { total_points: 6, minutes: 90, clean_sheets: 1, penalties_saved: 1 } },
                     7: { stats: { total_points: 4, minutes: 90, goals_conceded: 2 } },
                     8: { stats: { total_points: 2, minutes: 90, defensive_contributions: 1 } },
                     9: { stats: { total_points: 9, minutes: 90, clean_sheets: 1, assists: 1, bonus: 1 } },
