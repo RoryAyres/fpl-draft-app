@@ -51,8 +51,16 @@
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
                     <div class="bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-4 flex justify-between items-center text-white">
                         <div>
-                            <h2 class="text-lg font-bold" id="my-team-name">Loading Team...</h2>
-                            <p class="text-blue-100 text-sm" id="my-manager-name">Manager</p>
+                            <!-- UPDATED: Replaced static title with styled select dropdown -->
+                            <div class="relative inline-block">
+                                <select id="team-selector" onchange="UI.changeTeam(this.value)" class="text-lg font-bold bg-transparent text-white border-b border-blue-400/50 hover:border-white focus:outline-none py-1 pr-6 cursor-pointer appearance-none transition-colors">
+                                    <option class="text-gray-900" value="">Loading Team...</option>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center text-white">
+                                    <svg class="fill-current h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                </div>
+                            </div>
+                            <p class="text-blue-100 text-sm mt-0.5" id="my-manager-name">Manager</p>
                         </div>
                         <div class="text-right">
                             <div class="text-3xl font-black" id="my-team-points">0</div>
@@ -145,6 +153,15 @@
                 activeBtn.classList.remove('text-gray-500');
                 Render.currentTab();
             },
+            // NEW: Function to handle changing the active team view
+            changeTeam: (teamId) => {
+                State.myTeamId = parseInt(teamId);
+                Render.myTeam();
+                // Optional: Re-render table to immediately update the highlighted row for the new active team
+                if (!document.getElementById('content-table').classList.contains('hidden')) {
+                    Render.liveTable();
+                }
+            },
             getPosClass: (posId) => {
                 const map = { 1: 'bg-yellow-100 text-yellow-800 border-yellow-200', 2: 'bg-blue-100 text-blue-800 border-blue-200', 3: 'bg-green-100 text-green-800 border-green-200', 4: 'bg-red-100 text-red-800 border-red-200' };
                 return map[posId] || 'bg-gray-100 text-gray-800 border-gray-200';
@@ -205,7 +222,6 @@
 
                         for (const entry of State.leagueDetails.league_entries) {
                             try {
-                                // Team picks are fetched using the global `entry_id`
                                 const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
                                 State.teamEvents[entry.entry_id] = teamData;
                             } catch (err) {
@@ -239,16 +255,25 @@
                     State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
                     document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
                     
-                    // FIX: Key the entries by `id` (league-specific) instead of `entry_id` (global)
                     State.leagueDetails.league_entries.forEach(entry => {
                         State.entries[entry.id] = { ...entry, livePoints: 0 };
                     });
                     
-                    // Ensure the myTeamId reference also uses the league-specific `id`
                     State.myTeamId = State.leagueDetails.league_entries[0]?.id;
 
+                    // NEW: Populate the Team Selector Dropdown
+                    const selector = document.getElementById('team-selector');
+                    selector.innerHTML = '';
                     State.leagueDetails.league_entries.forEach(entry => {
-                        // Access team events using the global `entry_id`
+                        const opt = document.createElement('option');
+                        opt.value = entry.id;
+                        opt.className = "text-gray-900";
+                        opt.text = entry.entry_name;
+                        selector.appendChild(opt);
+                    });
+                    selector.value = State.myTeamId;
+
+                    State.leagueDetails.league_entries.forEach(entry => {
                         const lineup = State.teamEvents[entry.entry_id];
                         let total = 0;
                         if(lineup && lineup.picks) {
@@ -290,15 +315,14 @@
 
             myTeam: () => {
                 const teamInfo = State.entries[State.myTeamId];
-                // FIX: Retrieve lineup using the global `entry_id` tied to this team
                 const lineup = teamInfo ? State.teamEvents[teamInfo.entry_id] : null;
                 
                 if (!teamInfo || !lineup) return;
 
-                // User Preference Override: Display format for name on the front end
                 const formattedName = teamInfo.player_first_name === "Rory" ? "Rory A" : `${teamInfo.player_first_name} ${teamInfo.player_last_name}`;
 
-                document.getElementById('my-team-name').innerText = teamInfo.entry_name;
+                // Sync the select value in case it was changed internally, update manager, and update points
+                document.getElementById('team-selector').value = teamInfo.id;
                 document.getElementById('my-manager-name').innerText = formattedName;
                 document.getElementById('my-team-points').innerText = teamInfo.livePoints;
 

@@ -27,12 +27,12 @@ The application interfaces with the official Premier League Draft API:
 - **`CONFIG`**: Holds global constants like `LEAGUE_ID` and the absolute Vercel proxy prefix (`PROXY_URL`).
 - **`State`**: Centralized state store managing static player metadata, live scores, team lineups, current gameweek, and active team ID. 
   - *Crucial API Context:* The FPL Draft API uses two distinct IDs for teams. `id` (league-specific entry ID) is used in H2H `matches` and `standings`. `entry_id` (global manager ID) is used to fetch team picks from the `/entry` endpoint. `State.entries` is keyed by the league-specific `id` to map correctly to table data.
-- **`UI`**: Handles view switching (tabs: `my-team`, `fixtures`, `table`), loading overlays, error banners, and helper formatters (positions badges). Standardises name formatting to "Rory A" when detected.
-- **`API`**: Manages data fetching through the Vercel proxy with automatic fallback error handling. Includes specific logic to query the `/api/game` endpoint to determine the current gameweek, bypassing bugs with the `events` object in the Draft API.
+- **`UI`**: Handles view switching (tabs: `my-team`, `fixtures`, `table`), loading overlays, error banners, and helper formatters (positions badges). Standardises name formatting to "Rory A" when detected. Includes `changeTeam(id)` to update active view.
+- **`API`**: Manages data fetching through the Vercel proxy with automatic fallback error handling. Includes specific logic to query the `/api/game` endpoint to determine the current gameweek, bypassing bugs with the `events` object in the Draft API. Dynamically populates the team selector dropdown.
 - **`Render`**: Dynamically constructs DOM elements for:
-  - **My Team:** Position-sorted Starting XI and bench, opponent status badges (`(H)`/`(A)`), fixture state (`Live`, `FT`, `Soon`), and minutes played.
+  - **My Team:** Selectable via dropdown header to view *any* manager's position-sorted Starting XI and bench, opponent status badges (`(H)`/`(A)`), fixture state (`Live`, `FT`, `Soon`), and minutes played.
   - **Fixtures:** H2H matchup cards comparing live scores for the current gameweek. Uses soft equality for event matching and fallbacks for standard H2H properties (`entry_1_entry` vs `league_entry_1`).
-  - **Live Table:** Automatically detects H2H vs Classic format, computes projected live H2H/total points, sorts the standings, and displays rank change arrows. Classic tables actively use the computed `projectedTotalFPL`.
+  - **Live Table:** Automatically detects H2H vs Classic format, computes projected live H2H/total points, sorts the standings, and displays rank change arrows. Classic tables actively use the computed `projectedTotalFPL`. Changing the active team in the "My Team" dropdown dynamically highlights their row in this table.
 
 ---
 
