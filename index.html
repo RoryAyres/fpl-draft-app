@@ -211,12 +211,12 @@
                 for(let i=0; i<assists; i++) badges.push('👟'); 
                 for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
                 for(let i=0; i<penaltiesSaved; i++) badges.push('🧤');
-                for(let i=0; i<savePoints; i++) badges.push('👐');
+                for(let i=0; i<savePoints; i++) badges.push('🧤');
                 for(let i=0; i<yellowCards; i++) badges.push('🟨');
                 for(let i=0; i<redCards; i++) badges.push('🟥');
                 for(let i=0; i<penaltiesMissed; i++) badges.push('❌');
                 for(let i=0; i<ownGoals; i++) badges.push('⚠️');
-                for(let i=0; i<bonus; i++) badges.push('✨');
+                if(bonus > 0) badges.push('✨');
 
                 if (badges.length === 0) return '';
                 return `<span class="inline-flex items-center space-x-0.5 mx-1 text-[11px]">${badges.join('')}</span>`;
@@ -382,12 +382,12 @@
             
             getFixtureStatus: (teamId) => {
                 const fixture = State.plFixtures.find(f => f.team_h === teamId || f.team_a === teamId);
-                if (!fixture) return { opponent: 'TBD', status: 'Soon', isHome: null, colorClass: 'text-gray-400 bg-gray-800 border-gray-700' };
+                if (!fixture) return { opponent: 'Blank', status: '', isHome: null, colorClass: 'hidden' };
                 const isHome = fixture.team_h === teamId;
                 const oppTeam = State.teamsData[isHome ? fixture.team_a : fixture.team_h];
                 const opponentName = oppTeam ? oppTeam.short_name : 'UNK';
                 
-                let status = 'Soon', colorClass = 'text-gray-400 bg-gray-800 border-gray-700';
+                let status = '', colorClass = 'hidden';
                 if (fixture.finished || fixture.finished_provisional || (fixture.started && fixture.minutes >= 90)) { 
                     status = 'FT'; colorClass = 'text-gray-400 bg-gray-800/80 border-gray-700'; 
                 } 
@@ -422,7 +422,8 @@
                     const statBadges = UI.formatStatBadges(stats);
                     
                     const isPlayed = fix.status === 'Live' || fix.status === 'FT';
-                    const ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-100';
+                    const ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-200';
+                    const ptsDisplay = isPlayed ? pts : '-';
                     
                     const minBadge = (fix.status === 'Live' || fix.status === 'FT') 
                         ? `<span class="ml-1 px-1 py-0.5 rounded ${isBench ? 'bg-gray-800 text-gray-400' : 'bg-gray-800 text-gray-300'} font-medium text-[9px] border border-gray-700">${mins}'</span>` 
@@ -439,10 +440,10 @@
                                 <div class="flex items-center text-[10px] text-gray-400 mt-0.5"><span>${t ? t.short_name : ''}</span>${minBadge}</div>
                             </div>
                             <div class="w-20 text-center text-[11px] flex flex-col items-center flex-shrink-0">
-                                <span class="font-medium text-gray-300">${fix.opponent} ${fix.isHome ? '(H)' : '(A)'}</span>
-                                <span class="text-[9px] px-1.5 py-0.2 rounded border mt-0.5 ${fix.colorClass}">${fix.status}</span>
+                                <span class="font-medium text-gray-300">${fix.opponent} ${fix.isHome === null ? '' : (fix.isHome ? '(H)' : '(A)')}</span>
+                                ${fix.status ? `<span class="text-[9px] px-1.5 py-0.2 rounded border mt-0.5 ${fix.colorClass}">${fix.status}</span>` : ''}
                             </div>
-                            <div class="w-12 text-right flex-shrink-0"><span class="text-sm font-bold ${isBench ? 'text-gray-500' : ptsColor}">${pts}</span></div>
+                            <div class="w-12 text-right flex-shrink-0"><span class="text-sm font-bold ${isBench ? 'text-gray-500' : ptsColor}">${ptsDisplay}</span></div>
                         </div>`;
                 };
 
@@ -479,16 +480,17 @@
                     const statBadges = UI.formatStatBadges(stats);
                     
                     const isPlayed = fix.status === 'Live' || fix.status === 'FT';
-                    const ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-100';
+                    const ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-200';
+                    const ptsDisplay = isPlayed ? pts : '-';
 
                     const statusInd = isPlayed 
                         ? `<span class="text-[8px] px-1 font-semibold ${fix.status === 'Live' ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${fix.status === 'Live' ? mins + '\'' : 'FT'}</span>` 
-                        : `<span class="text-[8px] px-1 font-semibold text-gray-600">Soon</span>`;
+                        : ``;
                     
                     if (isAway) {
                         return `
                         <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${isBench ? 'opacity-50' : ''}">
-                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${pts}</div>
+                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${ptsDisplay}</div>
                             <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
                                 ${statusInd}
                                 ${statBadges}
@@ -505,7 +507,7 @@
                                 ${statBadges}
                                 ${statusInd}
                             </div>
-                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${pts}</div>
+                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${ptsDisplay}</div>
                         </div>`;
                     }
                 };
