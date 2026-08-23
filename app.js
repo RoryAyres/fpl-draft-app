@@ -5,14 +5,18 @@ const CONFIG = {
 
 const State = {
     isUsingMockData: false,
+    appPhase: 'INACTIVE', // 'ACTIVE' or 'INACTIVE'
+    targetEvent: null, // Holds the full GW object we are targeting
+    activeTab: '', 
     bootstrapStatic: null,
     leagueDetails: null,
-    currentGW: null,
+    currentGW: null, 
     liveScores: null,
     plFixtures: [],
     entries: {}, 
     teamEvents: {}, 
     teamsData: {},
+    timerIntervals: [], // To track and clear active countdowns
     
     getStaticPlayer: (id) => State.bootstrapStatic?.elements.find(e => e.id === id) || {},
     getLiveStats: (id) => State.liveScores?.elements[id]?.stats || {},
@@ -26,7 +30,6 @@ const State = {
     },
 
     calculateLiveTeamData: (picks) => {
-        // Schema Validation
         if (!picks || !Array.isArray(picks)) return { totalPoints: 0, starters: [], bench: [] };
         
         let enrichedPicks = picks.map(p => {
@@ -101,24 +104,70 @@ const UI = {
         document.getElementById('error-text').innerText = msg;
         document.getElementById('error-message').classList.remove('hidden');
     },
+    buildNavigation: () => {
+        const nav = document.getElementById('nav-tabs');
+        if (State.appPhase === 'ACTIVE') {
+            nav.innerHTML = `
+                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Fixtures</button>
+                <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Table</button>
+            `;
+            UI.switchTab('fixtures');
+        } else {
+            nav.innerHTML = `
+                <button onclick="UI.switchTab('hub')" id="tab-hub" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Hub</button>
+                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Upcoming Fixtures</button>
+                <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Table</button>
+            `;
+            UI.switchTab('hub');
+        }
+    },
     switchTab: (tabId) => {
+        State.activeTab = tabId;
         document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('nav button').forEach(el => {
+        document.querySelectorAll('#nav-tabs button').forEach(el => {
             el.classList.remove('active-tab', 'text-emerald-400');
             el.classList.add('text-gray-400');
         });
-        document.getElementById(`content-${tabId}`).classList.remove('hidden');
+        const contentEl = document.getElementById(`content-${tabId}`);
+        if(contentEl) contentEl.classList.remove('hidden');
+        
         const activeBtn = document.getElementById(`tab-${tabId}`);
-        activeBtn.classList.add('active-tab', 'text-emerald-400');
-        activeBtn.classList.remove('text-gray-400');
+        if(activeBtn) {
+            activeBtn.classList.add('active-tab', 'text-emerald-400');
+            activeBtn.classList.remove('text-gray-400');
+        }
         Render.currentTab();
+    },
+    startCountdown: (dateObj, elementId) => {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const updateTimer = () => {
+            const diff = dateObj.getTime() - new Date().getTime();
+            if (diff <= 0) {
+                el.innerText = "Deadline Passed";
+                return;
+            }
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+            const m = Math.floor((diff / 1000 / 60) % 60);
+            const s = Math.floor((diff / 1000) % 60);
+            el.innerText = `${d}d ${h}h ${m}m ${s}s`;
+        };
+        
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        State.timerIntervals.push(interval);
+    },
+    clearCountdowns: () => {
+        State.timerIntervals.forEach(clearInterval);
+        State.timerIntervals = [];
     },
     getPosClass: (posId) => {
         const map = { 1: 'bg-amber-900/50 text-amber-300 border-amber-700/50', 2: 'bg-blue-900/50 text-blue-300 border-blue-700/50', 3: 'bg-emerald-900/50 text-emerald-300 border-emerald-700/50', 4: 'bg-rose-900/50 text-rose-300 border-rose-700/50' };
         return map[posId] || 'bg-gray-800 text-gray-300 border-gray-700';
     },
     getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK'),
-    
     formatStatBadges: (stats, elementType) => {
         if (!stats) return '';
         let badges = [];
@@ -158,7 +207,6 @@ const UI = {
 
 const API = {
     fetchVercelProxy: async (endpoint, bypassCache = false) => {
-        // Implement client-side caching for heavy static data
         if (endpoint === 'bootstrap-static' && !bypassCache) {
             const cachedData = sessionStorage.getItem('fpl_bootstrap');
             if (cachedData) return JSON.parse(cachedData);
@@ -167,15 +215,11 @@ const API = {
         const timestamp = bypassCache ? `&_t=${Date.now()}` : '';
         const fetchUrl = `${CONFIG.PROXY_URL}${encodeURI(endpoint)}${timestamp}`;
 
-        // Exponential backoff retry mechanism
         const fetchWithRetry = async (url, retries = 2, delay = 500) => {
             for (let i = 0; i <= retries; i++) {
                 try {
                     const response = await fetch(url);
-                    if (!response.ok) {
-                        let errBody = await response.text();
-                        throw new Error(`Endpoint '${endpoint}' failed with status ${response.status}.`);
-                    }
+                    if (!response.ok) throw new Error(`Status ${response.status}`);
                     return await response.json();
                 } catch (e) {
                     if (i === retries) throw e;
@@ -187,9 +231,8 @@ const API = {
         const data = await fetchWithRetry(fetchUrl);
 
         if (endpoint === 'bootstrap-static' && !bypassCache) {
-            try {
-                sessionStorage.setItem('fpl_bootstrap', JSON.stringify(data));
-            } catch (e) { console.warn('Session storage quota exceeded'); }
+            try { sessionStorage.setItem('fpl_bootstrap', JSON.stringify(data)); } 
+            catch (e) { console.warn('Session storage quota exceeded'); }
         }
 
         return data;
@@ -201,27 +244,29 @@ const API = {
                 const icon = document.getElementById('refresh-icon');
                 icon.classList.add('animate-spin');
             }
-            State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static', manual);
             State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`, manual);
-            State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`, manual);
-            State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`, manual);
+            
+            if (State.appPhase === 'ACTIVE') {
+                State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`, manual);
+                State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`, manual);
 
-            for (const entry of State.leagueDetails.league_entries) {
-                try {
-                    const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`, manual);
-                    State.teamEvents[entry.entry_id] = teamData;
-                } catch (err) {}
-            }
-
-            State.leagueDetails.league_entries.forEach(entry => {
-                const lineup = State.teamEvents[entry.entry_id];
-                let total = 0;
-                if(lineup && lineup.picks) {
-                    const processedTeam = State.calculateLiveTeamData(lineup.picks);
-                    total = processedTeam.totalPoints;
+                for (const entry of State.leagueDetails.league_entries) {
+                    try {
+                        const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`, manual);
+                        State.teamEvents[entry.entry_id] = teamData;
+                    } catch (err) {}
                 }
-                State.updateLivePoints(entry.id, total);
-            });
+
+                State.leagueDetails.league_entries.forEach(entry => {
+                    const lineup = State.teamEvents[entry.entry_id];
+                    let total = 0;
+                    if(lineup && lineup.picks) {
+                        const processedTeam = State.calculateLiveTeamData(lineup.picks);
+                        total = processedTeam.totalPoints;
+                    }
+                    State.updateLivePoints(entry.id, total);
+                });
+            }
 
             Render.currentTab();
             if (manual) {
@@ -239,29 +284,40 @@ const API = {
             
             try {
                 State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
-                State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
                 
-                try {
-                    const gameStatus = await API.fetchVercelProxy('game');
-                    State.currentGW = gameStatus.current_event || 1;
-                } catch (e) {
-                    let eventsList = State.bootstrapStatic.events || [];
-                    if (!Array.isArray(eventsList)) eventsList = Object.values(eventsList);
-                    const currentEvent = eventsList.find(e => e.is_current) || eventsList.find(e => e.is_next);
-                    State.currentGW = currentEvent ? currentEvent.id : 1;
+                let eventsList = State.bootstrapStatic.events || [];
+                if (!Array.isArray(eventsList)) eventsList = Object.values(eventsList);
+                
+                const currentEvent = eventsList.find(e => e.is_current);
+                const nextEvent = eventsList.find(e => e.is_next);
+                const now = new Date();
+
+                // Determine Active vs Inactive State
+                if (currentEvent && new Date(currentEvent.deadline_time) < now && !currentEvent.finished) {
+                    State.appPhase = 'ACTIVE';
+                    State.currentGW = currentEvent.id;
+                    State.targetEvent = currentEvent;
+                    document.getElementById('live-indicator').classList.remove('hidden');
+                } else {
+                    State.appPhase = 'INACTIVE';
+                    State.targetEvent = nextEvent || currentEvent;
+                    State.currentGW = State.targetEvent ? State.targetEvent.id : 1;
                 }
 
-                State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
-                State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
+                State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
 
-                for (const entry of State.leagueDetails.league_entries) {
-                    try {
-                        const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
-                        State.teamEvents[entry.entry_id] = teamData;
-                    } catch (err) {}
+                // Only fetch heavy live endpoints if active
+                if (State.appPhase === 'ACTIVE') {
+                    State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
+                    State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
+
+                    for (const entry of State.leagueDetails.league_entries) {
+                        try {
+                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
+                            State.teamEvents[entry.entry_id] = teamData;
+                        } catch (err) {}
+                    }
                 }
-
-                document.getElementById('live-indicator').classList.remove('hidden');
 
             } catch (proxyError) {
                 console.error("[FRONTEND] API Fetch Error:", proxyError);
@@ -274,6 +330,7 @@ const API = {
                 
                 State.bootstrapStatic = MockData.getBootstrap();
                 State.leagueDetails = MockData.getLeague();
+                State.appPhase = 'ACTIVE';
                 State.currentGW = 1;
                 State.plFixtures = MockData.getPLFixtures();
                 State.liveScores = MockData.getLiveScores();
@@ -294,18 +351,20 @@ const API = {
             headerGwEl.innerText = `GW ${State.currentGW}`;
             headerGwEl.classList.remove('hidden');
 
-            State.leagueDetails.league_entries.forEach(entry => {
-                const lineup = State.teamEvents[entry.entry_id];
-                let total = 0;
-                if(lineup && lineup.picks) {
-                    const processedTeam = State.calculateLiveTeamData(lineup.picks);
-                    total = processedTeam.totalPoints;
-                }
-                State.updateLivePoints(entry.id, total);
-            });
+            if (State.appPhase === 'ACTIVE') {
+                State.leagueDetails.league_entries.forEach(entry => {
+                    const lineup = State.teamEvents[entry.entry_id];
+                    let total = 0;
+                    if(lineup && lineup.picks) {
+                        const processedTeam = State.calculateLiveTeamData(lineup.picks);
+                        total = processedTeam.totalPoints;
+                    }
+                    State.updateLivePoints(entry.id, total);
+                });
+            }
 
             UI.hideLoading();
-            UI.switchTab('fixtures');
+            UI.buildNavigation();
             
         } catch (error) {
             UI.showError("Critical initialisation error: " + error.message);
@@ -317,8 +376,56 @@ const API = {
 const Render = {
     currentTab: () => {
         if (!State.leagueDetails) return;
-        if (!document.getElementById('content-fixtures').classList.contains('hidden')) Render.fixtures();
-        if (!document.getElementById('content-table').classList.contains('hidden')) Render.liveTable();
+        
+        if (State.activeTab === 'hub' && State.appPhase === 'INACTIVE') {
+            Render.hub();
+        } else if (State.activeTab === 'fixtures') {
+            Render.fixtures();
+        } else if (State.activeTab === 'table') {
+            Render.table();
+        }
+    },
+
+    hub: () => {
+        UI.clearCountdowns();
+        const hubContainer = document.getElementById('content-hub');
+        
+        if (!State.targetEvent) {
+            hubContainer.innerHTML = `<div class="text-center p-4 text-xs text-gray-400 bg-gray-800 rounded-xl border border-gray-700">No upcoming events scheduled.</div>`;
+            return;
+        }
+
+        const gwDeadlineDate = new Date(State.targetEvent.deadline_time);
+        // Waiver deadline is 24 hours prior to the GW deadline
+        const waiverDeadlineDate = new Date(gwDeadlineDate.getTime() - (24 * 60 * 60 * 1000));
+
+        hubContainer.innerHTML = `
+            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
+                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Waiver Deadline</h3>
+                <div id="waiver-timer" class="text-2xl font-extrabold text-emerald-400 font-mono tracking-tight">--d --h --m --s</div>
+                <div class="text-[10px] text-gray-500 mt-1">${waiverDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+            </div>
+
+            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
+                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Gameweek Deadline</h3>
+                <div id="gw-timer" class="text-2xl font-extrabold text-blue-400 font-mono tracking-tight">--d --h --m --s</div>
+                <div class="text-[10px] text-gray-500 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 pt-2">
+                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-lg p-3 flex flex-col items-center justify-center transition-colors">
+                    <svg class="w-6 h-6 text-emerald-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    <span class="text-xs font-semibold text-emerald-200">Transactions</span>
+                </a>
+                <a href="https://draft.premierleague.com/team/my" target="_blank" rel="noopener" class="bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700/50 rounded-lg p-3 flex flex-col items-center justify-center transition-colors">
+                    <svg class="w-6 h-6 text-blue-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    <span class="text-xs font-semibold text-blue-200">My Team</span>
+                </a>
+            </div>
+        `;
+
+        UI.startCountdown(waiverDeadlineDate, 'waiver-timer');
+        UI.startCountdown(gwDeadlineDate, 'gw-timer');
     },
     
     getFixtureStatus: (teamId) => {
@@ -347,7 +454,7 @@ const Render = {
             return;
         }
 
-        let compiledHtml = ''; // Batched string to prevent DOM layout thrashing
+        let compiledHtml = ''; 
 
         h2hMatches.forEach((match, idx) => {
             const t1 = State.entries[match.league_entry_1 || match.entry_1_entry];
@@ -358,86 +465,97 @@ const Render = {
             const t1Name = t1.player_first_name === "Rory" ? "Rory A" : t1.player_first_name;
             const t2Name = t2.player_first_name === "Rory" ? "Rory A" : t2.player_first_name;
 
-            const t1Lineup = State.teamEvents[t1.entry_id];
-            const t2Lineup = State.teamEvents[t2.entry_id];
+            // Inactive mode styling overrides
+            const isInactive = State.appPhase === 'INACTIVE';
+            const pts1 = isInactive ? '-' : t1.livePoints;
+            const pts2 = isInactive ? '-' : t2.livePoints;
+            const hl1 = (!isInactive && t1.livePoints > t2.livePoints) ? 'text-emerald-400' : 'text-gray-200';
+            const hl2 = (!isInactive && t2.livePoints > t1.livePoints) ? 'text-emerald-400' : 'text-gray-200';
+            const bg1 = (!isInactive && t1.livePoints > t2.livePoints) ? 'bg-emerald-950/30' : '';
+            const bg2 = (!isInactive && t2.livePoints > t1.livePoints) ? 'bg-emerald-950/30' : '';
 
-            let detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">Lineups not available</div>';
+            let detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">Live lineups are not available until after the deadline passes.</div>';
             
-            if (t1Lineup && t2Lineup && t1Lineup.picks && t2Lineup.picks) {
-                const t1Data = State.calculateLiveTeamData(t1Lineup.picks);
-                const t2Data = State.calculateLiveTeamData(t2Lineup.picks);
+            if (!isInactive) {
+                const t1Lineup = State.teamEvents[t1.entry_id];
+                const t2Lineup = State.teamEvents[t2.entry_id];
+                
+                if (t1Lineup && t2Lineup && t1Lineup.picks && t2Lineup.picks) {
+                    const t1Data = State.calculateLiveTeamData(t1Lineup.picks);
+                    const t2Data = State.calculateLiveTeamData(t2Lineup.picks);
 
-                const buildCondensedPlayer = (pick, isBench, isAway) => {
-                    if (!pick) return '';
-                    const pStat = pick.static;
-                    const pts = pick.stats?.total_points || 0;
-                    const mins = pick.stats?.minutes || 0;
-                    const fix = pick.fixture;
-                    const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type); 
-                    
-                    const isPlayed = fix.status === 'Live' || fix.status === 'FT';
-                    
-                    let ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-500';
-                    let nameStyle = 'text-gray-200';
-                    
-                    if (pick.isSubbedOut) {
-                        ptsColor = 'text-gray-500';
-                        nameStyle = 'text-gray-400';
-                    } else if (pick.isSubbedIn) {
-                        ptsColor = 'text-emerald-300 font-extrabold';
-                        nameStyle = 'text-emerald-200';
-                    }
-
-                    const ptsDisplay = isPlayed ? pts : '-';
-                    const statusInd = isPlayed 
-                        ? `<span class="text-[8px] px-1 font-semibold ${fix.status === 'Live' ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${fix.status === 'Live' ? mins + '\'' : 'FT'}</span>` 
-                        : ``;
+                    const buildCondensedPlayer = (pick, isBench, isAway) => {
+                        if (!pick) return '';
+                        const pStat = pick.static;
+                        const pts = pick.stats?.total_points || 0;
+                        const mins = pick.stats?.minutes || 0;
+                        const fix = pick.fixture;
+                        const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type); 
                         
-                    let subIcon = '';
-                    if (pick.isSubbedOut) subIcon = `<span class="text-red-500 text-[10px] ml-0.5">↓</span>`;
-                    if (pick.isSubbedIn) subIcon = `<span class="text-emerald-500 text-[10px] ml-0.5">↑</span>`;
+                        const isPlayed = fix.status === 'Live' || fix.status === 'FT';
+                        
+                        let ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-500';
+                        let nameStyle = 'text-gray-200';
+                        
+                        if (pick.isSubbedOut) {
+                            ptsColor = 'text-gray-500';
+                            nameStyle = 'text-gray-400';
+                        } else if (pick.isSubbedIn) {
+                            ptsColor = 'text-emerald-300 font-extrabold';
+                            nameStyle = 'text-emerald-200';
+                        }
 
-                    if (isAway) {
-                        return `
-                        <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
-                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${ptsDisplay}</div>
-                            <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
-                                ${statusInd}
-                                ${statBadges}
-                                <span class="text-[10px] font-semibold ${nameStyle} truncate ml-1 mr-1.5">${pStat.web_name || 'Unknown'}${subIcon}</span>
-                                <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
-                            </div>
-                        </div>`;
-                    } else {
-                        return `
-                        <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
-                            <div class="flex items-center truncate min-w-0 pr-1 w-full">
-                                <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
-                                <span class="text-[10px] font-semibold ${nameStyle} truncate mr-1">${pStat.web_name || 'Unknown'}${subIcon}</span>
-                                ${statBadges}
-                                ${statusInd}
-                            </div>
-                            <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${ptsDisplay}</div>
-                        </div>`;
-                    }
-                };
+                        const ptsDisplay = isPlayed ? pts : '-';
+                        const statusInd = isPlayed 
+                            ? `<span class="text-[8px] px-1 font-semibold ${fix.status === 'Live' ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${fix.status === 'Live' ? mins + '\'' : 'FT'}</span>` 
+                            : ``;
+                            
+                        let subIcon = '';
+                        if (pick.isSubbedOut) subIcon = `<span class="text-red-500 text-[10px] ml-0.5">↓</span>`;
+                        if (pick.isSubbedIn) subIcon = `<span class="text-emerald-500 text-[10px] ml-0.5">↑</span>`;
 
-                detailsHtml = `
-                    <div class="flex p-2">
-                        <div class="w-1/2 pr-1 border-r border-gray-700/50">
-                            <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider text-left">Starters</div>
-                            ${t1Data.starters.map(p => buildCondensedPlayer(p, false, false)).join('')}
-                            <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider text-left">Bench</div>
-                            ${t1Data.bench.map(p => buildCondensedPlayer(p, true, false)).join('')}
+                        if (isAway) {
+                            return `
+                            <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
+                                <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${ptsDisplay}</div>
+                                <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
+                                    ${statusInd}
+                                    ${statBadges}
+                                    <span class="text-[10px] font-semibold ${nameStyle} truncate ml-1 mr-1.5">${pStat.web_name || 'Unknown'}${subIcon}</span>
+                                    <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                                </div>
+                            </div>`;
+                        } else {
+                            return `
+                            <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
+                                <div class="flex items-center truncate min-w-0 pr-1 w-full">
+                                    <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                                    <span class="text-[10px] font-semibold ${nameStyle} truncate mr-1">${pStat.web_name || 'Unknown'}${subIcon}</span>
+                                    ${statBadges}
+                                    ${statusInd}
+                                </div>
+                                <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${ptsDisplay}</div>
+                            </div>`;
+                        }
+                    };
+
+                    detailsHtml = `
+                        <div class="flex p-2">
+                            <div class="w-1/2 pr-1 border-r border-gray-700/50">
+                                <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider text-left">Starters</div>
+                                ${t1Data.starters.map(p => buildCondensedPlayer(p, false, false)).join('')}
+                                <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider text-left">Bench</div>
+                                ${t1Data.bench.map(p => buildCondensedPlayer(p, true, false)).join('')}
+                            </div>
+                            <div class="w-1/2 pl-1">
+                                <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider text-right">Starters</div>
+                                ${t2Data.starters.map(p => buildCondensedPlayer(p, false, true)).join('')}
+                                <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider text-right">Bench</div>
+                                ${t2Data.bench.map(p => buildCondensedPlayer(p, true, true)).join('')}
+                            </div>
                         </div>
-                        <div class="w-1/2 pl-1">
-                            <div class="text-[9px] text-gray-500 uppercase font-bold mb-1 tracking-wider text-right">Starters</div>
-                            ${t2Data.starters.map(p => buildCondensedPlayer(p, false, true)).join('')}
-                            <div class="text-[9px] text-gray-500 uppercase font-bold mt-2 mb-1 tracking-wider text-right">Bench</div>
-                            ${t2Data.bench.map(p => buildCondensedPlayer(p, true, true)).join('')}
-                        </div>
-                    </div>
-                `;
+                    `;
+                }
             }
 
             compiledHtml += `
@@ -446,20 +564,20 @@ const Render = {
                         <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
-                        <div class="flex-1 flex flex-col justify-center px-3 min-w-0 ${t1.livePoints > t2.livePoints ? 'bg-emerald-950/30' : ''}">
+                        <div class="flex-1 flex flex-col justify-center px-3 min-w-0 ${bg1}">
                             <div class="text-[10px] text-gray-400 truncate">${t1Name}</div>
-                            <div class="text-xs sm:text-sm font-bold truncate ${t1.livePoints > t2.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t1.entry_name}</div>
+                            <div class="text-xs sm:text-sm font-bold truncate ${hl1}">${t1.entry_name}</div>
                         </div>
                         <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10">
                             <div class="flex items-center font-bold w-full px-1">
-                                <span class="text-base flex-1 text-right ${t1.livePoints > t2.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t1.livePoints}</span>
+                                <span class="text-base flex-1 text-right ${hl1}">${pts1}</span>
                                 <span class="text-gray-600 text-xs px-1.5">-</span>
-                                <span class="text-base flex-1 text-left ${t2.livePoints > t1.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t2.livePoints}</span>
+                                <span class="text-base flex-1 text-left ${hl2}">${pts2}</span>
                             </div>
                         </div>
-                        <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0 ${t2.livePoints > t1.livePoints ? 'bg-emerald-950/30' : ''}">
+                        <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0 ${bg2}">
                             <div class="text-[10px] text-gray-400 truncate">${t2Name}</div>
-                            <div class="text-xs sm:text-sm font-bold truncate ${t2.livePoints > t1.livePoints ? 'text-emerald-400' : 'text-gray-200'}">${t2.entry_name}</div>
+                            <div class="text-xs sm:text-sm font-bold truncate ${hl2}">${t2.entry_name}</div>
                         </div>
                     </div>
                     <div id="fixture-details-${idx}" class="hidden bg-gray-900/60 border-t border-gray-700/60 shadow-inner">
@@ -471,34 +589,39 @@ const Render = {
         listEl.innerHTML = compiledHtml;
     },
 
-    liveTable: () => {
-        const tbody = document.getElementById('live-table-body');
-        const thead = document.getElementById('live-table-head');
-        let tbodyHtml = ''; // Batched HTML updating
+    table: () => {
+        const tbody = document.getElementById('table-body');
+        const thead = document.getElementById('table-head');
+        let tbodyHtml = ''; 
 
         const matches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
         const isH2H = matches.length > 0;
+        const isInactive = State.appPhase === 'INACTIVE';
         
+        document.getElementById('table-title').innerText = isInactive ? "Overall Standings" : "Live Standings";
+
         if (isH2H) {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">W-D-L</th><th class="px-2.5 py-2 text-center">Pts</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th></tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">W-D-L</th><th class="px-2.5 py-2 text-center">Pts</th>${isInactive ? '' : '<th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th>'}</tr>`;
         } else {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th></tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th>${isInactive ? '' : '<th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th>'}</tr>`;
         }
 
         let liveH2H = {};
-        matches.forEach(m => {
-            const entry1 = m.league_entry_1 || m.entry_1_entry;
-            const entry2 = m.league_entry_2 || m.entry_2_entry;
-            const p1 = State.entries[entry1]?.livePoints || 0;
-            const p2 = State.entries[entry2]?.livePoints || 0;
-            
-            liveH2H[entry1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
-            liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p2===p1?1:0, l: p2<p1?1:0 };
-        });
+        if (!isInactive) {
+            matches.forEach(m => {
+                const entry1 = m.league_entry_1 || m.entry_1_entry;
+                const entry2 = m.league_entry_2 || m.entry_2_entry;
+                const p1 = State.entries[entry1]?.livePoints || 0;
+                const p2 = State.entries[entry2]?.livePoints || 0;
+                
+                liveH2H[entry1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
+                liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p2===p1?1:0, l: p2<p1?1:0 };
+            });
+        }
 
         let tableData = (State.leagueDetails.standings || []).map(s => {
             const h2hUpdate = liveH2H[s.league_entry] || { pts: 0, w: 0, d: 0, l: 0 };
-            const livePts = State.entries[s.league_entry]?.livePoints || 0;
+            const livePts = isInactive ? 0 : (State.entries[s.league_entry]?.livePoints || 0);
             return {
                 ...s,
                 entryDetails: State.entries[s.league_entry],
@@ -517,8 +640,12 @@ const Render = {
             const currentRank = idx + 1;
             const prevRank = team.rank || 999;
             let rankIcon = '<svg class="w-3.5 h-3.5 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
-            if (currentRank < prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-up" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>';
-            else if (currentRank > prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
+            
+            // Only show rank changes in Live mode
+            if (!isInactive) {
+                if (currentRank < prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-up" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>';
+                else if (currentRank > prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
+            }
 
             const rowClass = 'bg-gray-800/40';
             const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
@@ -531,7 +658,7 @@ const Render = {
                         <td class="px-3 py-2.5"><div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-[10px] text-gray-400">${fName}</div></td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300 font-mono">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>
                         <td class="px-2.5 py-2.5 text-center text-xs font-semibold text-gray-300">${team.projectedTotalFPL}</td>
-                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.projectedH2HPts}</td>
+                        ${isInactive ? '' : `<td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.projectedH2HPts}</td>`}
                     </tr>`;
             } else {
                 tbodyHtml += `
@@ -540,7 +667,7 @@ const Render = {
                         <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
                         <td class="px-3 py-2.5"><div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-[10px] text-gray-400">${fName}</div></td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
-                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.liveFPLPts}</td>
+                        ${isInactive ? '' : `<td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.liveFPLPts}</td>`}
                     </tr>`;
             }
         });

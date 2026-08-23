@@ -42,38 +42,42 @@
                 <div class="text-xs font-medium bg-gray-900/60 px-2.5 py-1 rounded-full text-gray-300 border border-gray-700/50 flex items-center space-x-1.5">
                     <span class="truncate max-w-[100px]" id="league-name-display">Loading...</span>
                     <span id="header-gw-status" class="border-l border-gray-700 pl-1.5 text-emerald-400 font-bold hidden"></span>
-                    <span id="live-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden" title="Connected"></span>
+                    <span id="live-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden" title="Live Connection"></span>
                     <span id="mock-indicator" class="w-2 h-2 rounded-full bg-amber-400 hidden" title="Mock Mode"></span>
                 </div>
             </div>
         </div>
         
-        <nav class="max-w-4xl mx-auto px-3 flex overflow-x-auto no-scrollbar border-t border-gray-700/40">
-            <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="active-tab whitespace-nowrap py-2.5 px-4 text-xs font-semibold tracking-wide transition-colors">Live Fixtures</button>
-            <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Table</button>
+        <nav id="nav-tabs" class="max-w-4xl mx-auto px-3 flex overflow-x-auto no-scrollbar border-t border-gray-700/40">
+            <!-- Dynamically populated by JS based on Active/Inactive State -->
         </nav>
     </header>
 
     <main id="main-scroll-container" class="flex-grow overflow-y-auto relative bg-gray-900 pb-16">
         <div id="loading-overlay" class="absolute inset-0 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center z-50">
             <div class="loader ease-linear rounded-full border-3 border-t-3 border-gray-700 h-10 w-10 mb-3"></div>
-            <h2 class="text-center text-gray-300 text-xs font-medium" id="loading-text">Fetching live data...</h2>
+            <h2 class="text-center text-gray-300 text-xs font-medium" id="loading-text">Fetching data...</h2>
             <p class="text-[10px] text-gray-500 mt-1 max-w-xs text-center px-4" id="loading-subtext"></p>
         </div>
 
         <div class="max-w-4xl mx-auto px-2.5 py-3">
+            
+            <div id="content-hub" class="tab-content hidden space-y-4">
+                <!-- Hub content populated via JS -->
+            </div>
+
             <div id="content-fixtures" class="tab-content hidden space-y-2.5">
                 <div id="fixtures-list" class="space-y-2 mt-1"></div>
             </div>
 
             <div id="content-table" class="tab-content hidden space-y-2.5">
-                <h2 class="text-sm font-bold text-gray-200 px-1 mb-1">Live Standings</h2>
+                <h2 id="table-title" class="text-sm font-bold text-gray-200 px-1 mb-1">League Standings</h2>
                 <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs text-left">
-                            <thead id="live-table-head" class="text-[10px] text-gray-400 uppercase bg-gray-800/80 border-b border-gray-700/60">
+                            <thead id="table-head" class="text-[10px] text-gray-400 uppercase bg-gray-800/80 border-b border-gray-700/60">
                             </thead>
-                            <tbody id="live-table-body" class="divide-y divide-gray-700/40"></tbody>
+                            <tbody id="table-body" class="divide-y divide-gray-700/40"></tbody>
                         </table>
                     </div>
                 </div>
