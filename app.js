@@ -1,5 +1,6 @@
+const urlParams = new URLSearchParams(window.location.search);
 const CONFIG = {
-    LEAGUE_ID: 238,
+    LEAGUE_ID: urlParams.get('league') || 238,
     PROXY_URL: 'https://fpl-draft-app-iota.vercel.app/api/proxy?path=' 
 };
 
@@ -55,7 +56,6 @@ const State = {
 
         const hasPlayed = (stats) => stats && (stats.minutes > 0 || stats.yellow_cards > 0 || stats.red_cards > 0);
         
-        // Allows for provisional live subs if the player has 0 mins while match is ongoing or finished
         const isDefinitelyOut = (p) => (p.fixture.status === 'FT' || p.fixture.status === 'Live') && !hasPlayed(p.stats);
 
         bench.forEach(sub => {
@@ -290,7 +290,6 @@ const API = {
             try {
                 State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
                 
-                // Parse the specific Draft API structure for events
                 const currentGwId = State.bootstrapStatic.events?.current || 1;
                 const eventsData = State.bootstrapStatic.events?.data || [];
                 
@@ -412,8 +411,6 @@ const Render = {
         }
 
         const gwDeadlineDate = new Date(State.targetEvent.deadline_time);
-        
-        // Utilises the native FPL Draft API waivers_time timestamp if available, fallback 24h otherwise
         const waiverDeadlineDate = State.targetEvent.waivers_time 
             ? new Date(State.targetEvent.waivers_time) 
             : new Date(gwDeadlineDate.getTime() - (24 * 60 * 60 * 1000));
@@ -621,7 +618,7 @@ const Render = {
         document.getElementById('table-title').innerText = isInactive ? "Overall Standings" : "Live Standings";
 
         if (isH2H) {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">W-D-L</th><th class="px-2.5 py-2 text-center">Pts</th>${isInactive ? '' : '<th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th>'}</tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">${isInactive ? 'W-D-L' : 'Res'}</th><th class="px-2.5 py-2 text-center">Pts</th>${isInactive ? '' : '<th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th>'}</tr>`;
         } else {
             thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th>${isInactive ? '' : '<th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th>'}</tr>`;
         }
@@ -634,13 +631,13 @@ const Render = {
                 const p1 = State.entries[entry1]?.livePoints || 0;
                 const p2 = State.entries[entry2]?.livePoints || 0;
                 
-                liveH2H[entry1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0 };
-                liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p2===p1?1:0, l: p2<p1?1:0 };
+                liveH2H[entry1] = { pts: p1>p2 ? 3 : p1===p2 ? 1 : 0, w: p1>p2?1:0, d: p1===p2?1:0, l: p1<p2?1:0, res: p1>p2?'W':p1===p2?'D':'L' };
+                liveH2H[entry2] = { pts: p2>p1 ? 3 : p1===p2 ? 1 : 0, w: p2>p1?1:0, d: p2===p1?1:0, l: p2<p1?1:0, res: p2>p1?'W':p2===p1?'D':'L' };
             });
         }
 
         let tableData = (State.leagueDetails.standings || []).map(s => {
-            const h2hUpdate = liveH2H[s.league_entry] || { pts: 0, w: 0, d: 0, l: 0 };
+            const h2hUpdate = liveH2H[s.league_entry] || { pts: 0, w: 0, d: 0, l: 0, res: '-' };
             const livePts = isInactive ? 0 : (State.entries[s.league_entry]?.livePoints || 0);
             return {
                 ...s,
@@ -650,7 +647,8 @@ const Render = {
                 projectedTotalFPL: (s.points_for || s.total || 0) + livePts,
                 projectedW: (s.matches_won || 0) + h2hUpdate.w,
                 projectedD: (s.matches_drawn || 0) + h2hUpdate.d,
-                projectedL: (s.matches_lost || 0) + h2hUpdate.l
+                projectedL: (s.matches_lost || 0) + h2hUpdate.l,
+                gwResult: h2hUpdate.res
             };
         });
 
@@ -658,7 +656,8 @@ const Render = {
 
         tableData.forEach((team, idx) => {
             const currentRank = idx + 1;
-            const prevRank = team.rank || 999;
+            // Fallback to currentRank if team.rank is undefined/falsy (e.g. during GW1)
+            const prevRank = team.rank || currentRank; 
             let rankIcon = '<svg class="w-3.5 h-3.5 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
             
             if (!isInactive) {
@@ -670,12 +669,19 @@ const Render = {
             const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
 
             if(isH2H) {
+                let resColor = 'text-gray-500';
+                if (team.gwResult === 'W') resColor = 'text-emerald-400';
+                else if (team.gwResult === 'L') resColor = 'text-rose-400';
+
                 tbodyHtml += `
                     <tr class="hover:bg-gray-700/30 transition-colors ${rowClass}">
                         <td class="px-3 py-2.5 text-center font-medium text-gray-400 text-xs">${currentRank}</td>
                         <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
                         <td class="px-3 py-2.5"><div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-[10px] text-gray-400">${fName}</div></td>
-                        <td class="px-2.5 py-2.5 text-center text-xs text-gray-300 font-mono">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>
+                        ${isInactive 
+                            ? `<td class="px-2.5 py-2.5 text-center text-xs text-gray-300 font-mono">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>` 
+                            : `<td class="px-2.5 py-2.5 text-center text-xs font-bold ${resColor}">${team.gwResult}</td>`
+                        }
                         <td class="px-2.5 py-2.5 text-center text-xs font-semibold text-gray-300">${team.projectedTotalFPL}</td>
                         ${isInactive ? '' : `<td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.projectedH2HPts}</td>`}
                     </tr>`;
