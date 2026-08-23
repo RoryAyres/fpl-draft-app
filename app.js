@@ -6,7 +6,7 @@ const CONFIG = {
 const State = {
     isUsingMockData: false,
     appPhase: 'INACTIVE', // 'ACTIVE' or 'INACTIVE'
-    targetEvent: null, // Holds the full GW object we are targeting
+    targetEvent: null, 
     activeTab: '', 
     bootstrapStatic: null,
     leagueDetails: null,
@@ -16,7 +16,7 @@ const State = {
     entries: {}, 
     teamEvents: {}, 
     teamsData: {},
-    timerIntervals: [], // To track and clear active countdowns
+    timerIntervals: [], 
     
     getStaticPlayer: (id) => State.bootstrapStatic?.elements.find(e => e.id === id) || {},
     getLiveStats: (id) => State.liveScores?.elements[id]?.stats || {},
@@ -290,17 +290,16 @@ const API = {
                 
                 const currentEvent = eventsList.find(e => e.is_current);
                 const nextEvent = eventsList.find(e => e.is_next);
-                const now = new Date();
 
-                // Determine Active vs Inactive State
-                if (currentEvent && new Date(currentEvent.deadline_time) < now && !currentEvent.finished) {
+                // Determine Active vs Inactive State using FPL API booleans natively
+                if (currentEvent && !currentEvent.finished) {
                     State.appPhase = 'ACTIVE';
                     State.currentGW = currentEvent.id;
                     State.targetEvent = currentEvent;
                     document.getElementById('live-indicator').classList.remove('hidden');
                 } else {
                     State.appPhase = 'INACTIVE';
-                    State.targetEvent = nextEvent || currentEvent;
+                    State.targetEvent = nextEvent || currentEvent; // Targets next GW, or remains on current if season is over
                     State.currentGW = State.targetEvent ? State.targetEvent.id : 1;
                 }
 
@@ -390,7 +389,7 @@ const Render = {
         UI.clearCountdowns();
         const hubContainer = document.getElementById('content-hub');
         
-        if (!State.targetEvent) {
+        if (!State.targetEvent || !State.targetEvent.deadline_time) {
             hubContainer.innerHTML = `<div class="text-center p-4 text-xs text-gray-400 bg-gray-800 rounded-xl border border-gray-700">No upcoming events scheduled.</div>`;
             return;
         }
@@ -641,7 +640,6 @@ const Render = {
             const prevRank = team.rank || 999;
             let rankIcon = '<svg class="w-3.5 h-3.5 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
             
-            // Only show rank changes in Live mode
             if (!isInactive) {
                 if (currentRank < prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-up" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>';
                 else if (currentRank > prevRank) rankIcon = '<svg class="w-3.5 h-3.5 mx-auto arrow-down" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>';
