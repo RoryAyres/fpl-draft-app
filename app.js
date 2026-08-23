@@ -290,22 +290,24 @@ const API = {
                 
                 const currentEvent = eventsList.find(e => e.is_current);
                 const nextEvent = eventsList.find(e => e.is_next);
+                const now = new Date();
 
-                // Determine Active vs Inactive State using FPL API booleans natively
-                if (currentEvent && !currentEvent.finished) {
+                // Robust check: Active if marked current OR if the deadline has passed for the current/next active window
+                const activeCandidate = currentEvent || eventsList.find(e => new Date(e.deadline_time) <= now && !e.finished);
+
+                if (activeCandidate && !activeCandidate.finished) {
                     State.appPhase = 'ACTIVE';
-                    State.currentGW = currentEvent.id;
-                    State.targetEvent = currentEvent;
+                    State.currentGW = activeCandidate.id;
+                    State.targetEvent = activeCandidate;
                     document.getElementById('live-indicator').classList.remove('hidden');
                 } else {
                     State.appPhase = 'INACTIVE';
-                    State.targetEvent = nextEvent || currentEvent; // Targets next GW, or remains on current if season is over
+                    State.targetEvent = nextEvent || currentEvent;
                     State.currentGW = State.targetEvent ? State.targetEvent.id : 1;
                 }
 
                 State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
 
-                // Only fetch heavy live endpoints if active
                 if (State.appPhase === 'ACTIVE') {
                     State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
                     State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
@@ -395,7 +397,6 @@ const Render = {
         }
 
         const gwDeadlineDate = new Date(State.targetEvent.deadline_time);
-        // Waiver deadline is 24 hours prior to the GW deadline
         const waiverDeadlineDate = new Date(gwDeadlineDate.getTime() - (24 * 60 * 60 * 1000));
 
         hubContainer.innerHTML = `
@@ -464,7 +465,6 @@ const Render = {
             const t1Name = t1.player_first_name === "Rory" ? "Rory A" : t1.player_first_name;
             const t2Name = t2.player_first_name === "Rory" ? "Rory A" : t2.player_first_name;
 
-            // Inactive mode styling overrides
             const isInactive = State.appPhase === 'INACTIVE';
             const pts1 = isInactive ? '-' : t1.livePoints;
             const pts2 = isInactive ? '-' : t2.livePoints;
