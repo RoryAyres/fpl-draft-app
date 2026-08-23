@@ -18,7 +18,10 @@ const State = {
     teamsData: {},
     timerIntervals: [], 
     
-    getStaticPlayer: (id) => State.bootstrapStatic?.elements.find(e => e.id === id) || {},
+    getStaticPlayer: (id) => {
+        if (!State.bootstrapStatic || !State.bootstrapStatic.elements) return {};
+        return State.bootstrapStatic.elements.find(e => e.id === id) || {};
+    },
     getLiveStats: (id) => State.liveScores?.elements[id]?.stats || {},
     getLivePoints: (id) => State.liveScores?.elements[id]?.stats?.total_points || 0,
     getLiveMinutes: (id) => State.liveScores?.elements[id]?.stats?.minutes || 0,
@@ -51,7 +54,9 @@ const State = {
         starters.forEach(p => formation[p.static.element_type]++);
 
         const hasPlayed = (stats) => stats && (stats.minutes > 0 || stats.yellow_cards > 0 || stats.red_cards > 0);
-        const isDefinitelyOut = (p) => p.fixture.status === 'FT' && !hasPlayed(p.stats);
+        
+        // Allows for provisional live subs if the player has 0 mins while match is ongoing or finished
+        const isDefinitelyOut = (p) => (p.fixture.status === 'FT' || p.fixture.status === 'Live') && !hasPlayed(p.stats);
 
         bench.forEach(sub => {
             if (!hasPlayed(sub.stats)) return; 
@@ -285,25 +290,30 @@ const API = {
             try {
                 State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
                 
-                let eventsList = State.bootstrapStatic.events || [];
-                if (!Array.isArray(eventsList)) eventsList = Object.values(eventsList);
+                // Parse the specific Draft API structure for events
+                const currentGwId = State.bootstrapStatic.events?.current || 1;
+                const eventsData = State.bootstrapStatic.events?.data || [];
                 
-                const currentEvent = eventsList.find(e => e.is_current);
-                const nextEvent = eventsList.find(e => e.is_next);
+                let targetEvent = eventsData.find(e => e.id === currentGwId);
                 const now = new Date();
 
-                // Robust check: Active if marked current OR if the deadline has passed for the current/next active window
-                const activeCandidate = currentEvent || eventsList.find(e => new Date(e.deadline_time) <= now && !e.finished);
-
-                if (activeCandidate && !activeCandidate.finished) {
-                    State.appPhase = 'ACTIVE';
-                    State.currentGW = activeCandidate.id;
-                    State.targetEvent = activeCandidate;
-                    document.getElementById('live-indicator').classList.remove('hidden');
+                if (targetEvent) {
+                    const deadline = new Date(targetEvent.deadline_time);
+                    
+                    if (now >= deadline && !targetEvent.finished) {
+                        State.appPhase = 'ACTIVE';
+                        document.getElementById('live-indicator').classList.remove('hidden');
+                    } else {
+                        State.appPhase = 'INACTIVE';
+                        if (targetEvent.finished) {
+                            targetEvent = eventsData.find(e => e.id === currentGwId + 1) || targetEvent;
+                        }
+                    }
+                    State.currentGW = targetEvent.id;
+                    State.targetEvent = targetEvent;
                 } else {
                     State.appPhase = 'INACTIVE';
-                    State.targetEvent = nextEvent || currentEvent;
-                    State.currentGW = State.targetEvent ? State.targetEvent.id : 1;
+                    State.currentGW = currentGwId;
                 }
 
                 State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
@@ -341,18 +351,23 @@ const API = {
                 });
             }
 
-            State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
-            document.getElementById('league-name-display').innerText = State.leagueDetails.league.name;
+            if (State.bootstrapStatic.teams) {
+                State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
+            }
             
-            State.leagueDetails.league_entries.forEach(entry => {
-                State.entries[entry.id] = { ...entry, livePoints: 0 };
-            });
+            document.getElementById('league-name-display').innerText = State.leagueDetails?.league?.name || 'League';
+            
+            if (State.leagueDetails && State.leagueDetails.league_entries) {
+                State.leagueDetails.league_entries.forEach(entry => {
+                    State.entries[entry.id] = { ...entry, livePoints: 0 };
+                });
+            }
 
             const headerGwEl = document.getElementById('header-gw-status');
             headerGwEl.innerText = `GW ${State.currentGW}`;
             headerGwEl.classList.remove('hidden');
 
-            if (State.appPhase === 'ACTIVE') {
+            if (State.appPhase === 'ACTIVE' && State.leagueDetails && State.leagueDetails.league_entries) {
                 State.leagueDetails.league_entries.forEach(entry => {
                     const lineup = State.teamEvents[entry.entry_id];
                     let total = 0;
@@ -397,7 +412,11 @@ const Render = {
         }
 
         const gwDeadlineDate = new Date(State.targetEvent.deadline_time);
-        const waiverDeadlineDate = new Date(gwDeadlineDate.getTime() - (24 * 60 * 60 * 1000));
+        
+        // Utilises the native FPL Draft API waivers_time timestamp if available, fallback 24h otherwise
+        const waiverDeadlineDate = State.targetEvent.waivers_time 
+            ? new Date(State.targetEvent.waivers_time) 
+            : new Date(gwDeadlineDate.getTime() - (24 * 60 * 60 * 1000));
 
         hubContainer.innerHTML = `
             <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
@@ -513,6 +532,8 @@ const Render = {
                         if (pick.isSubbedOut) subIcon = `<span class="text-red-500 text-[10px] ml-0.5">↓</span>`;
                         if (pick.isSubbedIn) subIcon = `<span class="text-emerald-500 text-[10px] ml-0.5">↑</span>`;
 
+                        const posOpacity = pick.isSubbedOut ? 'opacity-40' : '';
+
                         if (isAway) {
                             return `
                             <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
@@ -521,14 +542,14 @@ const Render = {
                                     ${statusInd}
                                     ${statBadges}
                                     <span class="text-[10px] font-semibold ${nameStyle} truncate ml-1 mr-1.5">${pStat.web_name || 'Unknown'}${subIcon}</span>
-                                    <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                                    <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} ${posOpacity} px-0.5 rounded flex-shrink-0 transition-opacity">${UI.getPosName(pStat.element_type)}</span>
                                 </div>
                             </div>`;
                         } else {
                             return `
                             <div class="flex justify-between items-center py-1 border-b border-gray-700/40 ${(isBench && !pick.isSubbedIn) ? 'opacity-50' : ''}">
                                 <div class="flex items-center truncate min-w-0 pr-1 w-full">
-                                    <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                                    <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} ${posOpacity} px-0.5 rounded mr-1.5 flex-shrink-0 transition-opacity">${UI.getPosName(pStat.element_type)}</span>
                                     <span class="text-[10px] font-semibold ${nameStyle} truncate mr-1">${pStat.web_name || 'Unknown'}${subIcon}</span>
                                     ${statBadges}
                                     ${statusInd}
