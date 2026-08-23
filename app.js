@@ -323,7 +323,7 @@ const API = {
 
                     for (const entry of State.leagueDetails.league_entries) {
                         try {
-                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`);
+                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`, manual);
                             State.teamEvents[entry.entry_id] = teamData;
                         } catch (err) {}
                     }
@@ -380,6 +380,11 @@ const API = {
 
             UI.hideLoading();
             UI.buildNavigation();
+            
+            // Silently append league ID to URL if not already present
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('league', CONFIG.LEAGUE_ID);
+            window.history.replaceState({}, '', currentUrl);
             
         } catch (error) {
             UI.showError("Critical initialisation error: " + error.message);
@@ -656,7 +661,6 @@ const Render = {
 
         tableData.forEach((team, idx) => {
             const currentRank = idx + 1;
-            // Fallback to currentRank if team.rank is undefined/falsy (e.g. during GW1)
             const prevRank = team.rank || currentRank; 
             let rankIcon = '<svg class="w-3.5 h-3.5 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>';
             
