@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+body { 
+    font-family: 'Inter', sans-serif; 
+    -webkit-tap-highlight-color: transparent; 
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.loader { 
+    border-top-color: #10b981; 
+    animation: spinner 0.8s linear infinite; 
+}
+
+@keyframes spinner { 
+    0% { transform: rotate(0deg); } 
+    100% { transform: rotate(360deg); } 
+}
+
+.active-tab { 
+    border-bottom: 2px solid #10b981; 
+    color: #10b981; 
+    font-weight: 700; 
+}
+
+.arrow-up { color: #10b981; } 
+.arrow-down { color: #ef4444; } 
+
+#ptr-element { transition: transform 0.2s ease, opacity 0.2s ease; }
