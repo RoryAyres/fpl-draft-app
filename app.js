@@ -323,7 +323,7 @@ const API = {
 
                     for (const entry of State.leagueDetails.league_entries) {
                         try {
-                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`, manual);
+                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`); // FIXED: Removed 'manual' argument
                             State.teamEvents[entry.entry_id] = teamData;
                         } catch (err) {}
                     }
