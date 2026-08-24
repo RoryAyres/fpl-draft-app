@@ -118,7 +118,7 @@ const UI = {
                 <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Table</button>
                 <button onclick="UI.switchTab('info')" id="tab-info" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">ℹ️</button>
             `;
-            UI.switchTab('fixtures'); // Default tab logic overrides to H2H
+            UI.switchTab('fixtures');
         } else {
             nav.innerHTML = `
                 <button onclick="UI.switchTab('hub')" id="tab-hub" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Hub</button>
@@ -193,7 +193,7 @@ const UI = {
         const defcons = stats.defensive_contributions || stats.defensive_contribution || 0; 
         const savePoints = Math.floor(saves / 3);
 
-        const defconThreshold = (elementType === 2) ? 10 : ((elementType === 3 || elementType === 4) ? 12 : 999);
+        const defconThreshold = (elementType === 2) ? 10 : ((elementType === 3 || elementType === 4) ? 12 : (elementType === 1 ? 10 : 999));
         const hasReachedDefcon = defcons >= defconThreshold;
 
         for(let i=0; i<goals; i++) badges.push('⚽');
@@ -201,7 +201,13 @@ const UI = {
         for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
         for(let i=0; i<penaltiesSaved; i++) badges.push('🙅🏻');
         if(savePoints > 0) badges.push('🧤');
-        if(hasReachedDefcon) badges.push('🧱');
+        
+        if(hasReachedDefcon) {
+            badges.push('🧱');
+        } else if (defcons > 0 && defconThreshold !== 999) {
+            badges.push(`<span class="text-[9px] text-amber-400 font-mono font-semibold ml-0.5" title="Defcon Progress ${defcons}/${defconThreshold}">🧱${defcons}/${defconThreshold}</span>`);
+        }
+
         for(let i=0; i<yellowCards; i++) badges.push('🟨');
         for(let i=0; i<redCards; i++) badges.push('🟥');
         for(let i=0; i<penaltiesMissed; i++) badges.push('❌');
@@ -357,10 +363,9 @@ const API = {
                 State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
             }
             
-            // Assign League Name and link directly to it on the FPL Draft Site
             const leagueLinkEl = document.getElementById('league-name-display');
             leagueLinkEl.innerText = State.leagueDetails?.league?.name || 'League';
-            leagueLinkEl.href = `https://draft.premierleague.com/league/${CONFIG.LEAGUE_ID}/standings`;
+            leagueLinkEl.href = 'https://draft.premierleague.com/';
             
             if (State.leagueDetails && State.leagueDetails.league_entries) {
                 State.leagueDetails.league_entries.forEach(entry => {
@@ -411,7 +416,6 @@ const Render = {
         } else if (State.activeTab === 'table') {
             Render.table();
         } 
-        // No explicit Render function needed for 'info' as the content is primarily static HTML
     },
 
     hub: () => {
@@ -520,22 +524,23 @@ const Render = {
                         const fix = pick.fixture;
                         const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type); 
                         
-                        const isPlayed = fix.status === 'Live' || fix.status === 'FT';
+                        const isLive = fix.status === 'Live';
+                        const isFT = fix.status === 'FT';
                         
-                        let ptsColor = isPlayed ? 'text-emerald-400' : 'text-gray-500';
+                        let ptsColor = isLive ? 'text-emerald-400 font-bold' : (isFT ? 'text-gray-100 font-bold' : 'text-gray-500');
                         let nameStyle = 'text-gray-200';
                         
                         if (pick.isSubbedOut) {
                             ptsColor = 'text-gray-500';
                             nameStyle = 'text-gray-400';
                         } else if (pick.isSubbedIn) {
-                            ptsColor = 'text-emerald-300 font-extrabold';
+                            ptsColor = isLive ? 'text-emerald-300 font-extrabold' : (isFT ? 'text-white font-extrabold' : 'text-gray-400 font-bold');
                             nameStyle = 'text-emerald-200';
                         }
 
-                        const ptsDisplay = isPlayed ? pts : '-';
-                        const statusInd = isPlayed 
-                            ? `<span class="text-[8px] px-1 font-semibold ${fix.status === 'Live' ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${fix.status === 'Live' ? mins + '\'' : 'FT'}</span>` 
+                        const ptsDisplay = (isLive || isFT) ? pts : '-';
+                        const statusInd = (isLive || isFT)
+                            ? `<span class="text-[8px] px-1 font-semibold ${isLive ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}">${isLive ? mins + '\'' : 'FT'}</span>` 
                             : ``;
                             
                         let subIcon = '';
@@ -665,8 +670,13 @@ const Render = {
             const buildCondensedPlayer = (p, isAway) => {
                 const pStat = p.static;
                 const pts = p.stats?.total_points || 0;
+                const fix = Render.getFixtureStatus(pStat.team);
                 const statBadges = UI.formatStatBadges(p.stats, pStat.element_type);
-                let ptsColor = pts >= 6 ? 'text-emerald-400' : pts <= 0 ? 'text-gray-500' : 'text-gray-200';
+                
+                const isLive = fix.status === 'Live';
+                const isFT = fix.status === 'FT';
+                
+                let ptsColor = isLive ? 'text-emerald-400 font-bold' : (isFT ? 'text-gray-100 font-bold' : 'text-gray-500');
                 
                 if (isAway) {
                     return `
@@ -674,7 +684,7 @@ const Render = {
                         <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${pts}</div>
                         <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
                             ${statBadges}
-                            <span class="text-[10px] font-semibold text-gray-200 truncate ml-1 mr-1.5">${pStat.web_name}</span>
+                            <span class="text-[10px] font-semibold text-gray-200 truncate ml-1 mr-1.5">${pStat.web_name || 'Unknown'}</span>
                             <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
                         </div>
                     </div>`;
@@ -683,7 +693,7 @@ const Render = {
                     <div class="flex justify-between items-center py-1 border-b border-gray-700/40">
                         <div class="flex items-center truncate min-w-0 pr-1 w-full">
                             <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
-                            <span class="text-[10px] font-semibold text-gray-200 truncate mr-1">${pStat.web_name}</span>
+                            <span class="text-[10px] font-semibold text-gray-200 truncate mr-1">${pStat.web_name || 'Unknown'}</span>
                             ${statBadges}
                         </div>
                         <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${pts}</div>
