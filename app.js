@@ -176,7 +176,7 @@ const UI = {
         return map[posId] || 'bg-gray-800 text-gray-300 border-gray-700';
     },
     getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK'),
-    formatStatBadges: (stats, elementType) => {
+    formatStatBadges: (stats, elementType, showDefconProgress = false) => {
         if (!stats) return '';
         let badges = [];
         const goals = stats.goals_scored || 0;
@@ -193,7 +193,7 @@ const UI = {
         const defcons = stats.defensive_contributions || stats.defensive_contribution || 0; 
         const savePoints = Math.floor(saves / 3);
 
-        const defconThreshold = (elementType === 2) ? 10 : ((elementType === 3 || elementType === 4) ? 12 : (elementType === 1 ? 10 : 999));
+        const defconThreshold = (elementType === 2 || elementType === 1) ? 10 : ((elementType === 3 || elementType === 4) ? 12 : 999);
         const hasReachedDefcon = defcons >= defconThreshold;
 
         for(let i=0; i<goals; i++) badges.push('⚽');
@@ -202,17 +202,17 @@ const UI = {
         for(let i=0; i<penaltiesSaved; i++) badges.push('🙅🏻');
         if(savePoints > 0) badges.push('🧤');
         
-        if(hasReachedDefcon) {
-            badges.push('🧱');
-        } else if (defcons > 0 && defconThreshold !== 999) {
-            badges.push(`<span class="text-[9px] text-amber-400 font-mono font-semibold ml-0.5" title="Defcon Progress ${defcons}/${defconThreshold}">🧱${defcons}/${defconThreshold}</span>`);
-        }
-
         for(let i=0; i<yellowCards; i++) badges.push('🟨');
         for(let i=0; i<redCards; i++) badges.push('🟥');
         for(let i=0; i<penaltiesMissed; i++) badges.push('❌');
         for(let i=0; i<ownGoals; i++) badges.push('⚠️');
         if(bonus > 0) badges.push('✨');
+
+        if(hasReachedDefcon) {
+            badges.push('🧱');
+        } else if (showDefconProgress && defcons > 0 && defconThreshold !== 999) {
+            badges.push(`<span class="text-[9px] text-amber-400 font-mono font-semibold ml-0.5" title="Defcon Progress: ${defcons}">🧱${defcons}</span>`);
+        }
 
         if (badges.length === 0) return '';
         return `<span class="inline-flex items-center space-x-0.5 mx-1 text-[11px]">${badges.join('')}</span>`;
@@ -522,7 +522,7 @@ const Render = {
                         const pts = pick.stats?.total_points || 0;
                         const mins = pick.stats?.minutes || 0;
                         const fix = pick.fixture;
-                        const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type); 
+                        const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type, false); // Ensures false for H2H 
                         
                         const isLive = fix.status === 'Live';
                         const isFT = fix.status === 'FT';
@@ -591,7 +591,6 @@ const Render = {
                         </div>
                     `;
                 }
-            }
 
             compiledHtml += `
                 <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
@@ -671,7 +670,7 @@ const Render = {
                 const pStat = p.static;
                 const pts = p.stats?.total_points || 0;
                 const fix = Render.getFixtureStatus(pStat.team);
-                const statBadges = UI.formatStatBadges(p.stats, pStat.element_type);
+                const statBadges = UI.formatStatBadges(p.stats, pStat.element_type, true); // Enables defcon progress display
                 
                 const isLive = fix.status === 'Live';
                 const isFT = fix.status === 'FT';
