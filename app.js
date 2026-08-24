@@ -113,16 +113,18 @@ const UI = {
         const nav = document.getElementById('nav-tabs');
         if (State.appPhase === 'ACTIVE') {
             nav.innerHTML = `
-                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">H2H Matches</button>
                 <button onclick="UI.switchTab('pl-fixtures')" id="tab-pl-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">PL Fixtures</button>
+                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">H2H Matches</button>
                 <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Table</button>
+                <button onclick="UI.switchTab('info')" id="tab-info" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">ℹ️</button>
             `;
-            UI.switchTab('fixtures');
+            UI.switchTab('fixtures'); // Default tab logic overrides to H2H
         } else {
             nav.innerHTML = `
                 <button onclick="UI.switchTab('hub')" id="tab-hub" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Hub</button>
                 <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Upcoming H2H</button>
                 <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Table</button>
+                <button onclick="UI.switchTab('info')" id="tab-info" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">ℹ️</button>
             `;
             UI.switchTab('hub');
         }
@@ -355,7 +357,10 @@ const API = {
                 State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
             }
             
-            document.getElementById('league-name-display').innerText = State.leagueDetails?.league?.name || 'League';
+            // Assign League Name and link directly to it on the FPL Draft Site
+            const leagueLinkEl = document.getElementById('league-name-display');
+            leagueLinkEl.innerText = State.leagueDetails?.league?.name || 'League';
+            leagueLinkEl.href = `https://draft.premierleague.com/league/${CONFIG.LEAGUE_ID}/standings`;
             
             if (State.leagueDetails && State.leagueDetails.league_entries) {
                 State.leagueDetails.league_entries.forEach(entry => {
@@ -405,7 +410,8 @@ const Render = {
             Render.plFixtures();
         } else if (State.activeTab === 'table') {
             Render.table();
-        }
+        } 
+        // No explicit Render function needed for 'info' as the content is primarily static HTML
     },
 
     hub: () => {
@@ -641,7 +647,6 @@ const Render = {
                 statusColor = 'text-emerald-400 animate-pulse';
             }
             
-            // Extract all players who have played/participated for the specific team
             const getActivePlayers = (teamId) => {
                 if (!State.bootstrapStatic || !State.liveScores) return [];
                 return State.bootstrapStatic.elements
