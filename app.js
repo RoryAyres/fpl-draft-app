@@ -300,7 +300,9 @@ const API = {
                 State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static');
                 
                 const currentGwId = State.bootstrapStatic.events?.current || 1;
-                const eventsData = State.bootstrapStatic.events?.data || [];
+                const eventsData = Array.isArray(State.bootstrapStatic.events)
+                    ? State.bootstrapStatic.events
+                    : (State.bootstrapStatic.events?.data || []);
                 
                 let targetEvent = eventsData.find(e => e.id === currentGwId);
                 const now = new Date();
@@ -522,7 +524,7 @@ const Render = {
                         const pts = pick.stats?.total_points || 0;
                         const mins = pick.stats?.minutes || 0;
                         const fix = pick.fixture;
-                        const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type, false); // Ensures false for H2H 
+                        const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type, false); 
                         
                         const isLive = fix.status === 'Live';
                         const isFT = fix.status === 'FT';
@@ -591,6 +593,7 @@ const Render = {
                         </div>
                     `;
                 }
+            }
 
             compiledHtml += `
                 <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
@@ -670,7 +673,7 @@ const Render = {
                 const pStat = p.static;
                 const pts = p.stats?.total_points || 0;
                 const fix = Render.getFixtureStatus(pStat.team);
-                const statBadges = UI.formatStatBadges(p.stats, pStat.element_type, true); // Enables defcon progress display
+                const statBadges = UI.formatStatBadges(p.stats, pStat.element_type, true); 
                 
                 const isLive = fix.status === 'Live';
                 const isFT = fix.status === 'FT';
