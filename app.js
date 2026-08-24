@@ -113,14 +113,15 @@ const UI = {
         const nav = document.getElementById('nav-tabs');
         if (State.appPhase === 'ACTIVE') {
             nav.innerHTML = `
-                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Fixtures</button>
+                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">H2H Matches</button>
+                <button onclick="UI.switchTab('pl-fixtures')" id="tab-pl-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">PL Fixtures</button>
                 <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Table</button>
             `;
             UI.switchTab('fixtures');
         } else {
             nav.innerHTML = `
                 <button onclick="UI.switchTab('hub')" id="tab-hub" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Hub</button>
-                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Upcoming Fixtures</button>
+                <button onclick="UI.switchTab('fixtures')" id="tab-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Upcoming H2H</button>
                 <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Table</button>
             `;
             UI.switchTab('hub');
@@ -323,7 +324,7 @@ const API = {
 
                     for (const entry of State.leagueDetails.league_entries) {
                         try {
-                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`); // FIXED: Removed 'manual' argument
+                            const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`); 
                             State.teamEvents[entry.entry_id] = teamData;
                         } catch (err) {}
                     }
@@ -381,7 +382,6 @@ const API = {
             UI.hideLoading();
             UI.buildNavigation();
             
-            // Silently append league ID to URL if not already present
             const currentUrl = new URL(window.location.href);
             currentUrl.searchParams.set('league', CONFIG.LEAGUE_ID);
             window.history.replaceState({}, '', currentUrl);
@@ -401,6 +401,8 @@ const Render = {
             Render.hub();
         } else if (State.activeTab === 'fixtures') {
             Render.fixtures();
+        } else if (State.activeTab === 'pl-fixtures') {
+            Render.plFixtures();
         } else if (State.activeTab === 'table') {
             Render.table();
         }
@@ -603,6 +605,125 @@ const Render = {
                         </div>
                     </div>
                     <div id="fixture-details-${idx}" class="hidden bg-gray-900/60 border-t border-gray-700/60 shadow-inner">
+                        ${detailsHtml}
+                    </div>
+                </div>`;
+        });
+        
+        listEl.innerHTML = compiledHtml;
+    },
+
+    plFixtures: () => {
+        const listEl = document.getElementById('pl-fixtures-list');
+        
+        if (!State.plFixtures || State.plFixtures.length === 0) {
+            listEl.innerHTML = '<div class="text-center p-4 text-xs text-gray-400 bg-gray-800 rounded-xl border border-gray-700">No Premier League fixtures found.</div>';
+            return;
+        }
+
+        let compiledHtml = '';
+        
+        State.plFixtures.forEach((fixture, idx) => {
+            const teamH = State.teamsData[fixture.team_h];
+            const teamA = State.teamsData[fixture.team_a];
+            
+            if (!teamH || !teamA) return;
+            
+            const scoreH = fixture.team_h_score !== null ? fixture.team_h_score : '-';
+            const scoreA = fixture.team_a_score !== null ? fixture.team_a_score : '-';
+            
+            let status = 'Soon', statusColor = 'text-gray-500';
+            if (fixture.finished || fixture.finished_provisional) {
+                status = 'FT';
+                statusColor = 'text-gray-400';
+            } else if (fixture.started) {
+                status = fixture.minutes ? fixture.minutes + '\'' : 'Live';
+                statusColor = 'text-emerald-400 animate-pulse';
+            }
+            
+            // Extract all players who have played/participated for the specific team
+            const getActivePlayers = (teamId) => {
+                if (!State.bootstrapStatic || !State.liveScores) return [];
+                return State.bootstrapStatic.elements
+                    .filter(p => p.team === teamId)
+                    .map(p => ({
+                        static: p,
+                        stats: State.getLiveStats(p.id)
+                    }))
+                    .filter(p => p.stats && (p.stats.minutes > 0 || p.stats.yellow_cards > 0 || p.stats.red_cards > 0))
+                    .sort((a, b) => b.stats.total_points - a.stats.total_points);
+            };
+            
+            const homePlayers = getActivePlayers(fixture.team_h);
+            const awayPlayers = getActivePlayers(fixture.team_a);
+            
+            const buildCondensedPlayer = (p, isAway) => {
+                const pStat = p.static;
+                const pts = p.stats?.total_points || 0;
+                const statBadges = UI.formatStatBadges(p.stats, pStat.element_type);
+                let ptsColor = pts >= 6 ? 'text-emerald-400' : pts <= 0 ? 'text-gray-500' : 'text-gray-200';
+                
+                if (isAway) {
+                    return `
+                    <div class="flex justify-between items-center py-1 border-b border-gray-700/40">
+                        <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4">${pts}</div>
+                        <div class="flex items-center justify-end truncate min-w-0 pl-1 w-full">
+                            ${statBadges}
+                            <span class="text-[10px] font-semibold text-gray-200 truncate ml-1 mr-1.5">${pStat.web_name}</span>
+                            <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                        </div>
+                    </div>`;
+                } else {
+                    return `
+                    <div class="flex justify-between items-center py-1 border-b border-gray-700/40">
+                        <div class="flex items-center truncate min-w-0 pr-1 w-full">
+                            <span class="text-[8px] font-bold ${UI.getPosClass(pStat.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${UI.getPosName(pStat.element_type)}</span>
+                            <span class="text-[10px] font-semibold text-gray-200 truncate mr-1">${pStat.web_name}</span>
+                            ${statBadges}
+                        </div>
+                        <div class="font-bold text-[11px] ${ptsColor} flex-shrink-0 w-4 text-right">${pts}</div>
+                    </div>`;
+                }
+            };
+
+            let detailsHtml = '';
+            if (homePlayers.length === 0 && awayPlayers.length === 0) {
+                detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">No active player data yet.</div>';
+            } else {
+                detailsHtml = `
+                    <div class="flex p-2">
+                        <div class="w-1/2 pr-1 border-r border-gray-700/50">
+                            ${homePlayers.map(p => buildCondensedPlayer(p, false)).join('')}
+                        </div>
+                        <div class="w-1/2 pl-1">
+                            ${awayPlayers.map(p => buildCondensedPlayer(p, true)).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            compiledHtml += `
+                <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('pl-fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
+                    <div class="flex items-stretch h-14 relative">
+                        <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                        <div class="flex-1 flex flex-col justify-center px-3 min-w-0">
+                            <div class="text-xs sm:text-sm font-bold truncate text-gray-200">${teamH.name || teamH.short_name}</div>
+                        </div>
+                        <div class="w-24 flex flex-col items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10 py-1">
+                            <div class="flex items-center font-bold w-full px-1">
+                                <span class="text-base flex-1 text-right text-gray-200">${scoreH}</span>
+                                <span class="text-gray-600 text-xs px-1.5">-</span>
+                                <span class="text-base flex-1 text-left text-gray-200">${scoreA}</span>
+                            </div>
+                            <div class="text-[9px] font-semibold ${statusColor} mt-0.5">${status}</div>
+                        </div>
+                        <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0">
+                            <div class="text-xs sm:text-sm font-bold truncate text-gray-200">${teamA.name || teamA.short_name}</div>
+                        </div>
+                    </div>
+                    <div id="pl-fixture-details-${idx}" class="hidden bg-gray-900/60 border-t border-gray-700/60 shadow-inner">
                         ${detailsHtml}
                     </div>
                 </div>`;
