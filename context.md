@@ -13,7 +13,7 @@ This file serves as the technical handoff and context reference for continuing d
 ## 2. API Endpoints Documented & Used
 The application interfaces with the official Premier League Draft API via the proxy:
 - `bootstrap-static`: `/api/proxy?path=bootstrap-static` (Players, teams, current gameweek info). 
-  - *Draft Schema Quirk:* Unlike Classic FPL, the Draft API `events` structure is an object containing `current` (an integer ID representing the current/latest gameweek) and a `data` array containing the gameweek objects themselves. It natively provides `waivers_time` alongside `deadline_time`.
+  - *Draft Schema Quirk:* The Draft API `events` structure can unpredictably shift between a standard array and an object containing `current` and `data` keys. The initialization logic safely parses both schema variants to prevent breaking the application script.
 - `league details`: `/api/proxy?path=league/238/details` (Standings, league entries, H2H matches).
 - `team gameweek picks`: `/api/proxy?path=entry/{entry_id}/event/{gameweek}` (Starting XI and bench composition).
 - `live points`: `/api/proxy?path=event/{gameweek}/live` (Live points and minutes played per player).
@@ -26,18 +26,35 @@ The application interfaces with the official Premier League Draft API via the pr
 - **`CONFIG`**: Holds global constants like `LEAGUE_ID` and the absolute Vercel proxy prefix (`PROXY_URL`).
 - **`State`**: Centralised state store managing static player metadata, live scores, team lineups, current gameweek, and active team ID. Includes setter functions for controlled mutations.
   - *Crucial API Context:* The FPL Draft API uses two distinct IDs for teams. `id` (league-specific entry ID) is used in H2H `matches` and `standings`. `entry_id` (global manager ID) is used to fetch team picks from the `/entry` endpoint.
-  - *App Phase Routing:* The app determines its state (`ACTIVE` or `INACTIVE`) by comparing the current clock against the `deadline_time` of the `events.current` gameweek, verifying that the `finished` boolean is false.
+  - *App Phase Routing:* The app determines its state (`ACTIVE` or `INACTIVE`) by comparing the current clock against the `deadline_time` of the target gameweek, verifying that the `finished` boolean is false.
   - *Live Substitutions:* Evaluates provisionally while a player's match is ongoing (`Live` or `FT`) to instantly reflect potential bench points if the starter has 0 minutes.
-- **`UI`**: Handles view switching (tabs: `hub`, `fixtures`, `table`), dynamic navigation injection, loading overlays, helper formatters, and stat event emojis (including goals, trainer for assists, glove for saves, bricks for GKP/DEF goals conceded, and sparkles for bonus points).
+- **`UI`**: Handles view switching (tabs: `hub`, `fixtures`, `table`, `pl-fixtures`), dynamic navigation injection, loading overlays, helper formatters, and stat event emojis (including goals, assists, saves, bonus points, etc.).
+  - *Badge Formatting:* Defcon progress (`🧱X`) is strictly restricted to the PL Fixtures tab and is always injected last in the sequence to maintain a clean layout.
 - **`API`**: Manages data fetching through the Vercel proxy. Integrates an exponential backoff retry wrapper to handle intermittent network drops smoothly, and utilises `sessionStorage` caching alongside cache-busting timestamp tokens (`&_t=`) on manual refresh to bypass aggressive mobile browser caching.
 - **`Render`**: Dynamically constructs DOM elements using performance-optimised batched string updates for:
   - **Hub:** Inactive state view displaying countdowns to waiver and gameweek deadlines using native FPL timestamps.
-  - **Fixtures:** H2H matchup cards comparing live scores for the current gameweek. Cards are clickable and expand smoothly to reveal side-by-side formatted Start/Bench lineups. Unplayed players are indicated with a `-` in place of a score. Scores flex around a centered hyphen to prevent layout shifts. Subbed-out players have their position badge styled with `opacity-40`.
-  - **Live Table:** Automatically detects H2H vs Classic format, computes projected live H2H/total points, sorts the standings, and displays rank change arrows (falling back to `currentRank` if FPL rank is undefined, e.g., GW1). Replaces full `W-D-L` with a simple live Match Result (`Res`) during active gameweeks.
+  - **Fixtures:** H2H matchup cards comparing live scores for the current gameweek. Unplayed players are indicated with a `-`. Subbed-out players have their position badge styled with `opacity-40`.
+  - **PL Fixtures:** Real-life fixture cards displaying aggregated live stats for players involved in specific real-world matches.
+  - **Live Table:** Automatically detects H2H vs Classic format, computes projected live H2H/total points, sorts the standings, and displays rank change arrows. Replaces full `W-D-L` with a simple live Match Result (`Res`) during active gameweeks.
 
 ---
 
-## 4. AI Assistant Instructions
-- When responding to development prompts related to this repository, output full files only if they have been modified. Do not output unchanged files.
-- Never quote, summarise, or repeat this instruction section (Section 4) in your conversational text. It exists solely to guide your behaviour when reading this file.
-- Automatically output a single-line git commit summary for any changes made. It must be enclosed in a copyable plaintext code block (using \`\`\`text) and placed as the absolute final element of the response.
+## 4. Deployment Setup (Vercel)
+To run this live without CORS issues, you must use this specific structure alongside the frontend files.
+
+### `vercel.json`
+```json
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS" }
+      ]
+    }
+  ]
+}
