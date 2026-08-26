@@ -33,6 +33,31 @@ const State = {
         }
     },
 
+    getTeamForm: (entryId) => {
+        if (!State.leagueDetails || !State.leagueDetails.matches) return [];
+        const pastMatches = State.leagueDetails.matches
+            .filter(m => (m.league_entry_1 === entryId || m.league_entry_2 === entryId) && m.event < State.currentGW && m.league_entry_1_points !== null)
+            .sort((a, b) => b.event - a.event)
+            .slice(0, 5)
+            .reverse(); 
+
+        return pastMatches.map(m => {
+            const isTeam1 = m.league_entry_1 === entryId;
+            const myPts = isTeam1 ? m.league_entry_1_points : m.league_entry_2_points;
+            const oppPts = isTeam1 ? m.league_entry_2_points : m.league_entry_1_points;
+            if (myPts > oppPts) return 'W';
+            if (myPts < oppPts) return 'L';
+            return 'D';
+        });
+    },
+
+    getLastGwScore: (entryId) => {
+        if (!State.leagueDetails || !State.leagueDetails.matches) return '-';
+        const lastMatch = State.leagueDetails.matches.find(m => (m.league_entry_1 === entryId || m.league_entry_2 === entryId) && m.event === State.currentGW - 1);
+        if (!lastMatch) return '-';
+        return lastMatch.league_entry_1 === entryId ? lastMatch.league_entry_1_points : lastMatch.league_entry_2_points;
+    },
+
     calculateLiveTeamData: (picks) => {
         if (!picks || !Array.isArray(picks)) return { totalPoints: 0, starters: [], bench: [] };
         
@@ -144,6 +169,41 @@ const UI = {
             activeBtn.classList.add('active-tab', 'text-emerald-400');
             activeBtn.classList.remove('text-gray-400');
         }
+
+        const infoContent = document.getElementById('content-info');
+        if (infoContent) {
+            if (State.appPhase === 'INACTIVE') {
+                infoContent.innerHTML = `
+                    <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 p-4">
+                        <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">App Info</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed">Gameweek preparation is underway. Check back after the deadline passes for live H2H scoring, auto-subs, and live standings.</p>
+                    </div>`;
+            } else {
+                infoContent.innerHTML = `
+                    <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 p-4">
+                        <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-3">Stat Emoji Key</h3>
+                        <div class="grid grid-cols-2 gap-y-3 gap-x-2 text-xs text-gray-300 font-medium">
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">⚽</span> Goals Scored</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">👟</span> Assists</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🛡️</span> Clean Sheets</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🧤</span> Saves (3) / Pen Saved</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🧱</span> Defcons (Progress 🧱7)</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🟨</span> Yellow Cards</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🟥</span> Red Cards</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">❌</span> Pen Missed</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">⚠️</span> Own Goals</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">✨</span> Bonus Points</div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 p-4">
+                        <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">App Info</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed">
+                            This application calculates live Head-to-Head scores dynamically using official FPL match data. During ongoing matches, automatic substitutions are instantly evaluated and provisionally applied if a starting player finishes their fixture with 0 minutes played.
+                        </p>
+                    </div>`;
+            }
+        }
+
         Render.currentTab();
     },
     startCountdown: (dateObj, elementId) => {
@@ -176,6 +236,16 @@ const UI = {
         return map[posId] || 'bg-gray-800 text-gray-300 border-gray-700';
     },
     getPosName: (posId) => ({ 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' }[posId] || 'UNK'),
+    
+    renderFormSquares: (formArray, alignRight = false) => {
+        if (!formArray || formArray.length === 0) return '';
+        const justify = alignRight ? 'justify-end' : '';
+        return `<div class="flex space-x-0.5 mt-0.5 ${justify}">` + formArray.map(res => {
+            const color = res === 'W' ? 'bg-emerald-500' : (res === 'L' ? 'bg-rose-500' : 'bg-gray-500');
+            return `<span class="w-1.5 h-1.5 rounded-sm ${color}" title="${res}"></span>`;
+        }).join('') + `</div>`;
+    },
+
     formatStatBadges: (stats, elementType, showDefconProgress = false) => {
         if (!stats) return '';
         let badges = [];
@@ -377,6 +447,7 @@ const API = {
 
             const headerGwEl = document.getElementById('header-gw-status');
             headerGwEl.innerText = `GW ${State.currentGW}`;
+            headerGwEl.className = `border-l border-gray-700 pl-1.5 font-bold ${State.appPhase === 'ACTIVE' ? 'text-emerald-400' : 'text-gray-400'}`;
             headerGwEl.classList.remove('hidden');
 
             if (State.appPhase === 'ACTIVE' && State.leagueDetails && State.leagueDetails.league_entries) {
@@ -438,13 +509,13 @@ const Render = {
             <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
                 <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Waiver Deadline</h3>
                 <div id="waiver-timer" class="text-2xl font-extrabold text-emerald-400 font-mono tracking-tight">--d --h --m --s</div>
-                <div class="text-[10px] text-gray-500 mt-1">${waiverDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+                <div class="text-sm font-medium text-gray-400 mt-1">${waiverDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
             </div>
 
             <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
-                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Gameweek Deadline</h3>
+                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Team Selection Deadline</h3>
                 <div id="gw-timer" class="text-2xl font-extrabold text-blue-400 font-mono tracking-tight">--d --h --m --s</div>
-                <div class="text-[10px] text-gray-500 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+                <div class="text-sm font-medium text-gray-400 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
             </div>
 
             <div class="grid grid-cols-2 gap-3 pt-2">
@@ -508,9 +579,25 @@ const Render = {
             const bg1 = (!isInactive && t1.livePoints > t2.livePoints) ? 'bg-emerald-950/30' : '';
             const bg2 = (!isInactive && t2.livePoints > t1.livePoints) ? 'bg-emerald-950/30' : '';
 
+            const t1Form = UI.renderFormSquares(State.getTeamForm(t1.id));
+            const t2Form = UI.renderFormSquares(State.getTeamForm(t2.id), true);
+            const t1PrevScore = State.getLastGwScore(t1.id);
+            const t2PrevScore = State.getLastGwScore(t2.id);
+
             let detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">Live lineups are not available until after the deadline passes.</div>';
             
-            if (!isInactive) {
+            if (isInactive) {
+                detailsHtml = `
+                    <div class="flex justify-between items-center p-3 text-xs text-gray-400 bg-gray-900/60">
+                        <div class="text-left flex flex-col">
+                            <span class="font-bold text-gray-300">Last GW: ${t1PrevScore} pts</span>
+                        </div>
+                        <div class="text-gray-500 uppercase text-[9px] font-bold tracking-wider">Previous GW</div>
+                        <div class="text-right flex flex-col">
+                            <span class="font-bold text-gray-300">Last GW: ${t2PrevScore} pts</span>
+                        </div>
+                    </div>`;
+            } else {
                 const t1Lineup = State.teamEvents[t1.entry_id];
                 const t2Lineup = State.teamEvents[t2.entry_id];
                 
@@ -597,15 +684,16 @@ const Render = {
 
             compiledHtml += `
                 <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
-                    <div class="flex items-stretch h-16 relative">
+                    <div class="flex items-stretch h-16 relative py-1.5">
                         <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
                         <div class="flex-1 flex flex-col justify-center px-3 min-w-0 ${bg1}">
                             <div class="text-[10px] text-gray-400 truncate">${t1Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl1}">${t1.entry_name}</div>
+                            ${isInactive ? t1Form : ''}
                         </div>
-                        <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10">
+                        <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10 my-[-6px]">
                             <div class="flex items-center font-bold w-full px-1">
                                 <span class="text-base flex-1 text-right ${hl1}">${pts1}</span>
                                 <span class="text-gray-600 text-xs px-1.5">-</span>
@@ -615,6 +703,7 @@ const Render = {
                         <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0 ${bg2}">
                             <div class="text-[10px] text-gray-400 truncate">${t2Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl2}">${t2.entry_name}</div>
+                            ${isInactive ? t2Form : ''}
                         </div>
                     </div>
                     <div id="fixture-details-${idx}" class="hidden bg-gray-900/60 border-t border-gray-700/60 shadow-inner">
@@ -809,6 +898,7 @@ const Render = {
 
             const rowClass = 'bg-gray-800/40';
             const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
+            const teamFormHtml = UI.renderFormSquares(State.getTeamForm(team.league_entry));
 
             if(isH2H) {
                 let resColor = 'text-gray-500';
@@ -819,7 +909,13 @@ const Render = {
                     <tr class="hover:bg-gray-700/30 transition-colors ${rowClass}">
                         <td class="px-3 py-2.5 text-center font-medium text-gray-400 text-xs">${currentRank}</td>
                         <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
-                        <td class="px-3 py-2.5"><div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-[10px] text-gray-400">${fName}</div></td>
+                        <td class="px-3 py-2.5">
+                            <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
+                            <div class="flex items-center space-x-2">
+                                <div class="text-[10px] text-gray-400">${fName}</div>
+                                ${teamFormHtml}
+                            </div>
+                        </td>
                         ${isInactive 
                             ? `<td class="px-2.5 py-2.5 text-center text-xs text-gray-300 font-mono">${team.projectedW}-${team.projectedD}-${team.projectedL}</td>` 
                             : `<td class="px-2.5 py-2.5 text-center text-xs font-bold ${resColor}">${team.gwResult}</td>`
@@ -832,7 +928,13 @@ const Render = {
                     <tr class="hover:bg-gray-700/30 transition-colors ${rowClass}">
                         <td class="px-3 py-2.5 text-center font-medium text-gray-400 text-xs">${currentRank}</td>
                         <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
-                        <td class="px-3 py-2.5"><div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div><div class="text-[10px] text-gray-400">${fName}</div></td>
+                        <td class="px-3 py-2.5">
+                            <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
+                            <div class="flex items-center space-x-2">
+                                <div class="text-[10px] text-gray-400">${fName}</div>
+                                ${teamFormHtml}
+                            </div>
+                        </td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
                         ${isInactive ? '' : `<td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.liveFPLPts}</td>`}
                     </tr>`;
