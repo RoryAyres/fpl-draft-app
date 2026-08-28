@@ -213,7 +213,7 @@ const UI = {
         const updateTimer = () => {
             const diff = dateObj.getTime() - new Date().getTime();
             if (diff <= 0) {
-                el.innerText = "Deadline Passed";
+                el.innerText = "Passed";
                 return;
             }
             const d = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -525,21 +525,32 @@ const Render = {
 
         if (!hasWaiverPassed) {
             waiverHtml = `
-            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
-                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Waiver Deadline</h3>
-                <div id="waiver-timer" class="text-2xl font-extrabold text-emerald-400 font-mono tracking-tight">--d --h --m --s</div>
-                <div class="text-sm font-medium text-gray-400 mt-1">${waiverDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+            <div class="flex gap-3">
+                <div class="flex-1 bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 p-3 text-center flex flex-col justify-center">
+                    <h3 class="text-[10px] sm:text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Waiver Deadline</h3>
+                    <div id="waiver-timer" class="text-xl sm:text-2xl font-extrabold text-emerald-400 font-mono tracking-tight">--d --h --m --s</div>
+                    <div class="text-[10px] font-medium text-gray-400 mt-1">${waiverDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+                </div>
+                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="w-20 flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-xl p-2 flex flex-col items-center justify-center transition-colors">
+                    <svg class="w-6 h-6 text-emerald-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    <span class="text-[9px] font-semibold text-emerald-200">Transact</span>
+                </a>
             </div>`;
         } else {
             waiverHtml = `
-            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-3 flex justify-between items-center">
-                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider">Waiver Deadline</h3>
-                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Passed</span>
+            <div class="flex gap-3">
+                <div class="flex-1 bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 p-3 flex justify-between items-center">
+                    <h3 class="text-[10px] sm:text-xs text-gray-400 uppercase font-bold tracking-wider">Waiver Deadline</h3>
+                    <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Passed</span>
+                </div>
+                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="w-20 flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-xl p-2 flex flex-col items-center justify-center transition-colors">
+                    <svg class="w-6 h-6 text-emerald-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    <span class="text-[9px] font-semibold text-emerald-200">Transact</span>
+                </a>
             </div>`;
 
             const txData = State.transactions?.transactions || (Array.isArray(State.transactions) ? State.transactions : []);
             
-            // Sort by processing order: index ascending, fallback to time ascending
             const gwTransactions = txData
                 .filter(t => t.event === State.targetEvent.id && t.result === 'a')
                 .sort((a, b) => {
@@ -551,7 +562,7 @@ const Render = {
 
             if (gwTransactions.length > 0) {
                 transactionsHtml = `
-                <div class="mt-2">
+                <div class="mt-4">
                     <h3 class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2 px-1">Processed Transactions</h3>
                     <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden divide-y divide-gray-700/40">`;
                 
@@ -569,30 +580,32 @@ const Render = {
                     
                     let kindBadge = '';
                     if (t.kind === 'w') {
-                        kindBadge = `<span class="bg-purple-900/50 text-purple-300 border border-purple-700/50 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2 uppercase" title="Waiver">W</span>`;
+                        kindBadge = `<span class="bg-purple-900/50 text-purple-300 border border-purple-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Waiver">W</span>`;
                     } else if (t.kind === 'f') {
-                        kindBadge = `<span class="bg-amber-900/50 text-amber-300 border border-amber-700/50 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2 uppercase" title="Free Agent">FA</span>`;
+                        kindBadge = `<span class="bg-amber-900/50 text-amber-300 border border-amber-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Free Agent">FA</span>`;
                     } else {
-                        kindBadge = `<span class="bg-blue-900/50 text-blue-300 border border-blue-700/50 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2 uppercase" title="Trade">T</span>`;
+                        kindBadge = `<span class="bg-blue-900/50 text-blue-300 border border-blue-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Trade">T</span>`;
                     }
 
                     transactionsHtml += `
-                    <div class="p-3 flex items-center justify-between text-xs hover:bg-gray-750 transition-colors">
-                        <div class="w-1/3 flex flex-col justify-center pr-2">
-                            <div class="flex items-center">
-                                <span class="font-bold text-gray-200 truncate">${team?.entry_name || 'Unknown'}</span>
-                                ${kindBadge}
-                            </div>
+                    <div class="p-3 flex items-center text-xs hover:bg-gray-750 transition-colors">
+                        <div class="w-8 flex-shrink-0 flex justify-center mr-2">
+                            ${kindBadge}
+                        </div>
+                        <div class="w-1/3 flex flex-col justify-center pr-2 min-w-0">
+                            <div class="font-bold text-gray-200 truncate">${team?.entry_name || 'Unknown'}</div>
                             <div class="text-[10px] text-gray-400 mt-0.5 truncate">${fName}</div>
                         </div>
                         <div class="flex flex-col flex-1 pl-3 border-l border-gray-700/50 min-w-0">
                             <div class="flex items-center text-gray-200 font-semibold truncate">
-                                <span class="text-[10px] mr-1.5" title="In">🟢</span>
-                                <span class="truncate">[${inPos}] ${playerIn.web_name || 'Unknown'} <span class="font-normal text-gray-400">(${inTeam})</span></span>
+                                <span class="text-[10px] mr-1.5 flex-shrink-0" title="In">➡️</span>
+                                <span class="text-[8px] font-bold ${UI.getPosClass(playerIn.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${inPos}</span>
+                                <span class="truncate">${playerIn.web_name || 'Unknown'} <span class="font-normal text-gray-400">(${inTeam})</span></span>
                             </div>
                             <div class="flex items-center text-gray-400 font-semibold truncate mt-1">
-                                <span class="text-[10px] mr-1.5" title="Out">🔴</span>
-                                <span class="truncate">[${outPos}] ${playerOut.web_name || 'Unknown'} <span class="font-normal text-gray-500">(${outTeam})</span></span>
+                                <span class="text-[10px] mr-1.5 flex-shrink-0" title="Out">⬅️</span>
+                                <span class="text-[8px] font-bold ${UI.getPosClass(playerOut.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0 opacity-70">${outPos}</span>
+                                <span class="truncate">${playerOut.web_name || 'Unknown'} <span class="font-normal text-gray-500">(${outTeam})</span></span>
                             </div>
                         </div>
                     </div>`;
@@ -600,27 +613,22 @@ const Render = {
                 
                 transactionsHtml += `</div></div>`;
             } else {
-                transactionsHtml = `<div class="mt-2 text-center text-xs text-gray-500 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">No successful transactions processed yet.</div>`;
+                transactionsHtml = `<div class="mt-4 text-center text-xs text-gray-500 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">No successful transactions processed yet.</div>`;
             }
         }
 
         hubContainer.innerHTML = `
             ${waiverHtml}
             
-            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center mt-4">
-                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Team Selection Deadline</h3>
-                <div id="gw-timer" class="text-2xl font-extrabold text-blue-400 font-mono tracking-tight">--d --h --m --s</div>
-                <div class="text-sm font-medium text-gray-400 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3 pt-2">
-                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-lg p-3 flex flex-col items-center justify-center transition-colors">
-                    <svg class="w-6 h-6 text-emerald-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                    <span class="text-xs font-semibold text-emerald-200">Transactions</span>
-                </a>
-                <a href="https://draft.premierleague.com/team/my" target="_blank" rel="noopener" class="bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700/50 rounded-lg p-3 flex flex-col items-center justify-center transition-colors">
+            <div class="flex gap-3 mt-4">
+                <div class="flex-1 bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 p-3 text-center flex flex-col justify-center">
+                    <h3 class="text-[10px] sm:text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Team Selection</h3>
+                    <div id="gw-timer" class="text-xl sm:text-2xl font-extrabold text-blue-400 font-mono tracking-tight">--d --h --m --s</div>
+                    <div class="text-[10px] font-medium text-gray-400 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+                </div>
+                <a href="https://draft.premierleague.com/team/my" target="_blank" rel="noopener" class="w-20 flex-shrink-0 bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700/50 rounded-xl p-2 flex flex-col items-center justify-center transition-colors">
                     <svg class="w-6 h-6 text-blue-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                    <span class="text-xs font-semibold text-blue-200">My Team</span>
+                    <span class="text-[9px] font-semibold text-blue-200">My Team</span>
                 </a>
             </div>
             
