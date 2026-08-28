@@ -11,6 +11,7 @@ const State = {
     activeTab: '', 
     bootstrapStatic: null,
     leagueDetails: null,
+    transactions: null,
     currentGW: null, 
     liveScores: null,
     plFixtures: [],
@@ -80,7 +81,6 @@ const State = {
         starters.forEach(p => formation[p.static.element_type]++);
 
         const hasPlayed = (stats) => stats && (stats.minutes > 0 || stats.yellow_cards > 0 || stats.red_cards > 0);
-        
         const isDefinitelyOut = (p) => (p.fixture.status === 'FT' || p.fixture.status === 'Live') && !hasPlayed(p.stats);
 
         bench.forEach(sub => {
@@ -330,6 +330,12 @@ const API = {
             }
             State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`, manual);
             
+            try {
+                State.transactions = await API.fetchVercelProxy(`draft/league/${CONFIG.LEAGUE_ID}/transactions`, manual);
+            } catch(err) {
+                console.warn("Could not fetch transactions", err);
+            }
+            
             if (State.appPhase === 'ACTIVE') {
                 State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`, manual);
                 State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`, manual);
@@ -397,6 +403,12 @@ const API = {
                 }
 
                 State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`);
+
+                try {
+                    State.transactions = await API.fetchVercelProxy(`draft/league/${CONFIG.LEAGUE_ID}/transactions`);
+                } catch(err) {
+                    console.warn("Could not fetch transactions", err);
+                }
 
                 if (State.appPhase === 'ACTIVE') {
                     State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
@@ -504,15 +516,75 @@ const Render = {
         const waiverDeadlineDate = State.targetEvent.waivers_time 
             ? new Date(State.targetEvent.waivers_time) 
             : new Date(gwDeadlineDate.getTime() - (24 * 60 * 60 * 1000));
+            
+        const now = new Date();
+        const hasWaiverPassed = now >= waiverDeadlineDate;
 
-        hubContainer.innerHTML = `
+        let waiverHtml = '';
+        let transactionsHtml = '';
+
+        if (!hasWaiverPassed) {
+            waiverHtml = `
             <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
                 <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Waiver Deadline</h3>
                 <div id="waiver-timer" class="text-2xl font-extrabold text-emerald-400 font-mono tracking-tight">--d --h --m --s</div>
                 <div class="text-sm font-medium text-gray-400 mt-1">${waiverDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
-            </div>
+            </div>`;
+        } else {
+            waiverHtml = `
+            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-3 flex justify-between items-center">
+                <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider">Waiver Deadline</h3>
+                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Passed</span>
+            </div>`;
 
-            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center">
+            const txData = State.transactions?.transactions || (Array.isArray(State.transactions) ? State.transactions : []);
+            const gwTransactions = txData
+                .filter(t => t.event === State.targetEvent.id && t.result === 'a')
+                .sort((a,b) => new Date(b.added_time) - new Date(a.added_time));
+
+            if (gwTransactions.length > 0) {
+                transactionsHtml = `
+                <div class="mt-2">
+                    <h3 class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2 px-1">Processed Transactions</h3>
+                    <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden divide-y divide-gray-700/40">`;
+                
+                gwTransactions.forEach(t => {
+                    const team = State.entries[t.entry];
+                    const playerIn = State.getStaticPlayer(t.element_in);
+                    const playerOut = State.getStaticPlayer(t.element_out);
+                    
+                    let kindBadge = '';
+                    if (t.kind === 'w') {
+                        kindBadge = `<span class="bg-purple-900/50 text-purple-300 border border-purple-700/50 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2 uppercase" title="Waiver">W</span>`;
+                    } else if (t.kind === 'f') {
+                        kindBadge = `<span class="bg-amber-900/50 text-amber-300 border border-amber-700/50 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2 uppercase" title="Free Agent">FA</span>`;
+                    } else {
+                        kindBadge = `<span class="bg-blue-900/50 text-blue-300 border border-blue-700/50 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2 uppercase" title="Trade">T</span>`;
+                    }
+
+                    transactionsHtml += `
+                    <div class="p-3 flex items-center justify-between text-xs hover:bg-gray-750 transition-colors">
+                        <div class="font-bold text-gray-200 truncate w-1/3 flex items-center">
+                            <span class="truncate">${team?.entry_name || 'Unknown'}</span>
+                            ${kindBadge}
+                        </div>
+                        <div class="flex flex-col flex-1 pl-3 border-l border-gray-700/50 ml-2 min-w-0">
+                            <span class="text-emerald-400 font-semibold truncate"><span class="text-[9px] mr-1">IN</span>${playerIn.web_name || 'Unknown'}</span>
+                            <span class="text-rose-400 font-semibold truncate mt-0.5"><span class="text-[9px] mr-1">OUT</span>${playerOut.web_name || 'Unknown'}</span>
+                        </div>
+                    </div>`;
+                });
+                
+                transactionsHtml += `</div></div>`;
+            } else {
+                transactionsHtml = `<div class="mt-2 text-center text-xs text-gray-500 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">No successful transactions processed yet.</div>`;
+            }
+        }
+
+        hubContainer.innerHTML = `
+            ${waiverHtml}
+            
+            <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden p-4 text-center mt-4">
                 <h3 class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2">Team Selection Deadline</h3>
                 <div id="gw-timer" class="text-2xl font-extrabold text-blue-400 font-mono tracking-tight">--d --h --m --s</div>
                 <div class="text-sm font-medium text-gray-400 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
@@ -528,9 +600,11 @@ const Render = {
                     <span class="text-xs font-semibold text-blue-200">My Team</span>
                 </a>
             </div>
+            
+            ${transactionsHtml}
         `;
 
-        UI.startCountdown(waiverDeadlineDate, 'waiver-timer');
+        if (!hasWaiverPassed) UI.startCountdown(waiverDeadlineDate, 'waiver-timer');
         UI.startCountdown(gwDeadlineDate, 'gw-timer');
     },
     
