@@ -6,7 +6,7 @@ const CONFIG = {
 
 const State = {
     isUsingMockData: false,
-    appPhase: 'INACTIVE', // 'ACTIVE' or 'INACTIVE'
+    appPhase: 'INACTIVE',
     targetEvent: null, 
     activeTab: '', 
     bootstrapStatic: null,
@@ -538,9 +538,16 @@ const Render = {
             </div>`;
 
             const txData = State.transactions?.transactions || (Array.isArray(State.transactions) ? State.transactions : []);
+            
+            // Sort by processing order: index ascending, fallback to time ascending
             const gwTransactions = txData
                 .filter(t => t.event === State.targetEvent.id && t.result === 'a')
-                .sort((a,b) => new Date(b.added_time) - new Date(a.added_time));
+                .sort((a, b) => {
+                    const indexA = a.index !== undefined && a.index !== null ? a.index : 99999;
+                    const indexB = b.index !== undefined && b.index !== null ? b.index : 99999;
+                    if (indexA !== indexB) return indexA - indexB;
+                    return new Date(a.added_time) - new Date(b.added_time);
+                });
 
             if (gwTransactions.length > 0) {
                 transactionsHtml = `
@@ -550,6 +557,8 @@ const Render = {
                 
                 gwTransactions.forEach(t => {
                     const team = State.entries[t.entry] || Object.values(State.entries).find(e => e.entry_id === t.entry) || Object.values(State.entries).find(e => e.id === t.entry);
+                    const fName = team?.player_first_name === "Rory" ? "Rory A" : team?.player_first_name || '';
+
                     const playerIn = State.getStaticPlayer(t.element_in);
                     const playerOut = State.getStaticPlayer(t.element_out);
                     
@@ -569,18 +578,21 @@ const Render = {
 
                     transactionsHtml += `
                     <div class="p-3 flex items-center justify-between text-xs hover:bg-gray-750 transition-colors">
-                        <div class="font-bold text-gray-200 truncate w-1/3 flex items-center">
-                            <span class="truncate">${team?.entry_name || 'Unknown'}</span>
-                            ${kindBadge}
-                        </div>
-                        <div class="flex flex-col flex-1 pl-3 border-l border-gray-700/50 ml-2 min-w-0">
-                            <div class="flex items-center justify-between text-emerald-400 font-semibold">
-                                <span class="truncate"><span class="text-[9px] mr-1">IN</span>${playerIn.web_name || 'Unknown'}</span>
-                                <span class="text-[9px] font-medium text-gray-400 flex-shrink-0 ml-2">${inPos} • ${inTeam}</span>
+                        <div class="w-1/3 flex flex-col justify-center pr-2">
+                            <div class="flex items-center">
+                                <span class="font-bold text-gray-200 truncate">${team?.entry_name || 'Unknown'}</span>
+                                ${kindBadge}
                             </div>
-                            <div class="flex items-center justify-between text-rose-400 font-semibold mt-1">
-                                <span class="truncate"><span class="text-[9px] mr-1">OUT</span>${playerOut.web_name || 'Unknown'}</span>
-                                <span class="text-[9px] font-medium text-gray-400 flex-shrink-0 ml-2">${outPos} • ${outTeam}</span>
+                            <div class="text-[10px] text-gray-400 mt-0.5 truncate">${fName}</div>
+                        </div>
+                        <div class="flex flex-col flex-1 pl-3 border-l border-gray-700/50 min-w-0">
+                            <div class="flex items-center text-gray-200 font-semibold truncate">
+                                <span class="text-[10px] mr-1.5" title="In">🟢</span>
+                                <span class="truncate">[${inPos}] ${playerIn.web_name || 'Unknown'} <span class="font-normal text-gray-400">(${inTeam})</span></span>
+                            </div>
+                            <div class="flex items-center text-gray-400 font-semibold truncate mt-1">
+                                <span class="text-[10px] mr-1.5" title="Out">🔴</span>
+                                <span class="truncate">[${outPos}] ${playerOut.web_name || 'Unknown'} <span class="font-normal text-gray-500">(${outTeam})</span></span>
                             </div>
                         </div>
                     </div>`;
