@@ -549,9 +549,14 @@ const Render = {
                     <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden divide-y divide-gray-700/40">`;
                 
                 gwTransactions.forEach(t => {
-                    const team = State.entries[t.entry];
+                    const team = State.entries[t.entry] || Object.values(State.entries).find(e => e.entry_id === t.entry) || Object.values(State.entries).find(e => e.id === t.entry);
                     const playerIn = State.getStaticPlayer(t.element_in);
                     const playerOut = State.getStaticPlayer(t.element_out);
+                    
+                    const inTeam = State.teamsData[playerIn.team]?.short_name || 'UNK';
+                    const inPos = UI.getPosName(playerIn.element_type);
+                    const outTeam = State.teamsData[playerOut.team]?.short_name || 'UNK';
+                    const outPos = UI.getPosName(playerOut.element_type);
                     
                     let kindBadge = '';
                     if (t.kind === 'w') {
@@ -569,8 +574,14 @@ const Render = {
                             ${kindBadge}
                         </div>
                         <div class="flex flex-col flex-1 pl-3 border-l border-gray-700/50 ml-2 min-w-0">
-                            <span class="text-emerald-400 font-semibold truncate"><span class="text-[9px] mr-1">IN</span>${playerIn.web_name || 'Unknown'}</span>
-                            <span class="text-rose-400 font-semibold truncate mt-0.5"><span class="text-[9px] mr-1">OUT</span>${playerOut.web_name || 'Unknown'}</span>
+                            <div class="flex items-center justify-between text-emerald-400 font-semibold">
+                                <span class="truncate"><span class="text-[9px] mr-1">IN</span>${playerIn.web_name || 'Unknown'}</span>
+                                <span class="text-[9px] font-medium text-gray-400 flex-shrink-0 ml-2">${inPos} • ${inTeam}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-rose-400 font-semibold mt-1">
+                                <span class="truncate"><span class="text-[9px] mr-1">OUT</span>${playerOut.web_name || 'Unknown'}</span>
+                                <span class="text-[9px] font-medium text-gray-400 flex-shrink-0 ml-2">${outPos} • ${outTeam}</span>
+                            </div>
                         </div>
                     </div>`;
                 });
