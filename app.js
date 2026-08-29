@@ -882,6 +882,9 @@ const Render = {
             } else if (fixture.started) {
                 status = fixture.minutes ? fixture.minutes + '\'' : 'Live';
                 statusColor = 'text-emerald-400 animate-pulse';
+            } else if (fixture.kickoff_time) {
+                const kickoffDate = new Date(fixture.kickoff_time);
+                status = kickoffDate.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
             }
             
             const getActivePlayers = (teamId) => {
