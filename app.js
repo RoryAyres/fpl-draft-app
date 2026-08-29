@@ -143,7 +143,8 @@ const UI = {
                 <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Live Table</button>
                 <button onclick="UI.switchTab('info')" id="tab-info" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">ℹ️</button>
             `;
-            UI.switchTab('fixtures');
+            if (State.activeTab === '' || State.activeTab === 'hub') UI.switchTab('fixtures');
+            else UI.switchTab(State.activeTab);
         } else {
             nav.innerHTML = `
                 <button onclick="UI.switchTab('hub')" id="tab-hub" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Hub</button>
@@ -151,7 +152,8 @@ const UI = {
                 <button onclick="UI.switchTab('table')" id="tab-table" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">Table</button>
                 <button onclick="UI.switchTab('info')" id="tab-info" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">ℹ️</button>
             `;
-            UI.switchTab('hub');
+            if (State.activeTab === '' || State.activeTab === 'pl-fixtures') UI.switchTab('hub');
+            else UI.switchTab(State.activeTab);
         }
     },
     switchTab: (tabId) => {
@@ -187,7 +189,7 @@ const UI = {
                             <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">👟</span> Assists</div>
                             <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🛡️</span> Clean Sheets</div>
                             <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🧤</span> Saves (3) / Pen Saved</div>
-                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🧱</span> Defcons (Progress 🧱7)</div>
+                            <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🧱</span> Defcons (Threshold Hit)</div>
                             <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🟨</span> Yellow Cards</div>
                             <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">🟥</span> Red Cards</div>
                             <div class="flex items-center"><span class="w-6 text-center inline-block mr-1">❌</span> Pen Missed</div>
@@ -246,7 +248,7 @@ const UI = {
         }).join('') + `</div>`;
     },
 
-    formatStatBadges: (stats, elementType, showDefconProgress = false) => {
+    formatStatBadges: (stats, elementType) => {
         if (!stats) return '';
         let badges = [];
         const goals = stats.goals_scored || 0;
@@ -280,9 +282,7 @@ const UI = {
 
         if(hasReachedDefcon) {
             badges.push('🧱');
-        } else if (showDefconProgress && defcons > 0 && defconThreshold !== 999) {
-            badges.push(`<span class="text-[9px] text-amber-400 font-mono font-semibold ml-0.5" title="Defcon Progress: ${defcons}">🧱${defcons}</span>`);
-        }
+        } 
 
         if (badges.length === 0) return '';
         return `<span class="inline-flex items-center space-x-0.5 mx-1 text-[11px]">${badges.join('')}</span>`;
@@ -328,12 +328,53 @@ const API = {
                 const icon = document.getElementById('refresh-icon');
                 icon.classList.add('animate-spin');
             }
+            
+            // Re-evaluate application phase in case deadline passed since initial load
+            State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static', manual);
+            
+            const currentGwId = State.bootstrapStatic.events?.current || 1;
+            const eventsData = Array.isArray(State.bootstrapStatic.events)
+                ? State.bootstrapStatic.events
+                : (State.bootstrapStatic.events?.data || []);
+            
+            let targetEvent = eventsData.find(e => e.id === currentGwId);
+            const now = new Date();
+            let phaseChanged = false;
+
+            if (targetEvent) {
+                const deadline = new Date(targetEvent.deadline_time);
+                if (now >= deadline && !targetEvent.finished) {
+                    if (State.appPhase !== 'ACTIVE') phaseChanged = true;
+                    State.appPhase = 'ACTIVE';
+                    document.getElementById('live-indicator').classList.remove('hidden');
+                } else {
+                    if (State.appPhase !== 'INACTIVE') phaseChanged = true;
+                    State.appPhase = 'INACTIVE';
+                    document.getElementById('live-indicator').classList.add('hidden');
+                    if (targetEvent.finished) {
+                        targetEvent = eventsData.find(e => e.id === currentGwId + 1) || targetEvent;
+                    }
+                }
+                State.currentGW = targetEvent.id;
+                State.targetEvent = targetEvent;
+                
+                const headerGwEl = document.getElementById('header-gw-status');
+                headerGwEl.innerText = `GW ${State.currentGW}`;
+                headerGwEl.className = `border-l border-gray-700 pl-1.5 font-bold ${State.appPhase === 'ACTIVE' ? 'text-emerald-400' : 'text-gray-400'}`;
+            }
+
+            if (phaseChanged) {
+                UI.buildNavigation();
+            }
+
             State.leagueDetails = await API.fetchVercelProxy(`league/${CONFIG.LEAGUE_ID}/details`, manual);
             
-            try {
-                State.transactions = await API.fetchVercelProxy(`draft/league/${CONFIG.LEAGUE_ID}/transactions`, manual);
-            } catch(err) {
-                console.warn("Could not fetch transactions", err);
+            if (State.appPhase === 'INACTIVE') {
+                try {
+                    State.transactions = await API.fetchVercelProxy(`draft/league/${CONFIG.LEAGUE_ID}/transactions`, manual);
+                } catch(err) {
+                    console.warn("Could not fetch transactions", err);
+                }
             }
             
             if (State.appPhase === 'ACTIVE') {
@@ -531,9 +572,8 @@ const Render = {
                     <div id="waiver-timer" class="text-xl sm:text-2xl font-extrabold text-emerald-400 font-mono tracking-tight">--d --h --m --s</div>
                     <div class="text-[10px] font-medium text-gray-400 mt-1">${waiverDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
                 </div>
-                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="w-20 flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-xl p-2 flex flex-col items-center justify-center transition-colors">
-                    <svg class="w-6 h-6 text-emerald-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                    <span class="text-[9px] font-semibold text-emerald-200">Transact</span>
+                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="w-14 flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-xl flex items-center justify-center transition-colors">
+                    <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
                 </a>
             </div>`;
         } else {
@@ -543,9 +583,8 @@ const Render = {
                     <h3 class="text-[10px] sm:text-xs text-gray-400 uppercase font-bold tracking-wider">Waiver Deadline</h3>
                     <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Passed</span>
                 </div>
-                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="w-20 flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-xl p-2 flex flex-col items-center justify-center transition-colors">
-                    <svg class="w-6 h-6 text-emerald-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                    <span class="text-[9px] font-semibold text-emerald-200">Transact</span>
+                <a href="https://draft.premierleague.com/team/transactions" target="_blank" rel="noopener" class="w-14 flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 rounded-xl flex items-center justify-center transition-colors">
+                    <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
                 </a>
             </div>`;
 
@@ -626,9 +665,8 @@ const Render = {
                     <div id="gw-timer" class="text-xl sm:text-2xl font-extrabold text-blue-400 font-mono tracking-tight">--d --h --m --s</div>
                     <div class="text-[10px] font-medium text-gray-400 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
                 </div>
-                <a href="https://draft.premierleague.com/team/my" target="_blank" rel="noopener" class="w-20 flex-shrink-0 bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700/50 rounded-xl p-2 flex flex-col items-center justify-center transition-colors">
-                    <svg class="w-6 h-6 text-blue-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                    <span class="text-[9px] font-semibold text-blue-200">My Team</span>
+                <a href="https://draft.premierleague.com/team/my" target="_blank" rel="noopener" class="w-14 flex-shrink-0 bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700/50 rounded-xl flex items-center justify-center transition-colors">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                 </a>
             </div>
             
@@ -681,8 +719,6 @@ const Render = {
             const pts2 = isInactive ? '-' : t2.livePoints;
             const hl1 = (!isInactive && t1.livePoints > t2.livePoints) ? 'text-emerald-400' : 'text-gray-200';
             const hl2 = (!isInactive && t2.livePoints > t1.livePoints) ? 'text-emerald-400' : 'text-gray-200';
-            const bg1 = (!isInactive && t1.livePoints > t2.livePoints) ? 'bg-emerald-950/30' : '';
-            const bg2 = (!isInactive && t2.livePoints > t1.livePoints) ? 'bg-emerald-950/30' : '';
 
             const t1Form = UI.renderFormSquares(State.getTeamForm(t1.id));
             const t2Form = UI.renderFormSquares(State.getTeamForm(t2.id), true);
@@ -716,7 +752,7 @@ const Render = {
                         const pts = pick.stats?.total_points || 0;
                         const mins = pick.stats?.minutes || 0;
                         const fix = pick.fixture;
-                        const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type, false); 
+                        const statBadges = UI.formatStatBadges(pick.stats, pStat.element_type); 
                         
                         const isLive = fix.status === 'Live';
                         const isFT = fix.status === 'FT';
@@ -793,7 +829,7 @@ const Render = {
                         <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
-                        <div class="flex-1 flex flex-col justify-center px-3 min-w-0 ${bg1}">
+                        <div class="flex-1 flex flex-col justify-center px-3 min-w-0">
                             <div class="text-[10px] text-gray-400 truncate">${t1Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl1}">${t1.entry_name}</div>
                             ${isInactive ? t1Form : ''}
@@ -805,7 +841,7 @@ const Render = {
                                 <span class="text-base flex-1 text-left ${hl2}">${pts2}</span>
                             </div>
                         </div>
-                        <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0 ${bg2}">
+                        <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0">
                             <div class="text-[10px] text-gray-400 truncate">${t2Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl2}">${t2.entry_name}</div>
                             ${isInactive ? t2Form : ''}
@@ -867,7 +903,7 @@ const Render = {
                 const pStat = p.static;
                 const pts = p.stats?.total_points || 0;
                 const fix = Render.getFixtureStatus(pStat.team);
-                const statBadges = UI.formatStatBadges(p.stats, pStat.element_type, true); 
+                const statBadges = UI.formatStatBadges(p.stats, pStat.element_type); 
                 
                 const isLive = fix.status === 'Live';
                 const isFT = fix.status === 'FT';
@@ -1018,7 +1054,7 @@ const Render = {
                             <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
                             <div class="flex items-center space-x-2">
                                 <div class="text-[10px] text-gray-400">${fName}</div>
-                                ${teamFormHtml}
+                                ${isInactive ? teamFormHtml : ''}
                             </div>
                         </td>
                         ${isInactive 
@@ -1037,7 +1073,7 @@ const Render = {
                             <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
                             <div class="flex items-center space-x-2">
                                 <div class="text-[10px] text-gray-400">${fName}</div>
-                                ${teamFormHtml}
+                                ${isInactive ? teamFormHtml : ''}
                             </div>
                         </td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
