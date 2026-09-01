@@ -322,22 +322,19 @@ const API = {
         return data;
     },
     
-    refreshData: async (manual = false) => {
+refreshData: async (manual = false) => {
         try {
             if (manual) {
                 const icon = document.getElementById('refresh-icon');
                 icon.classList.add('animate-spin');
             }
             
-            // Re-evaluate application phase in case deadline passed since initial load
             State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static', manual);
             
-            const currentGwId = State.bootstrapStatic.events?.current || 1;
-            const eventsData = Array.isArray(State.bootstrapStatic.events)
-                ? State.bootstrapStatic.events
-                : (State.bootstrapStatic.events?.data || []);
+            let eventsList = State.bootstrapStatic.events || [];
+            if (!Array.isArray(eventsList)) eventsList = Object.values(eventsList);
             
-            let targetEvent = eventsData.find(e => e.id === currentGwId);
+            let targetEvent = eventsList.find(e => e.is_current) || eventsList.find(e => e.is_next);
             const now = new Date();
             let phaseChanged = false;
 
@@ -352,7 +349,7 @@ const API = {
                     State.appPhase = 'INACTIVE';
                     document.getElementById('live-indicator').classList.add('hidden');
                     if (targetEvent.finished) {
-                        targetEvent = eventsData.find(e => e.id === currentGwId + 1) || targetEvent;
+                        targetEvent = eventsList.find(e => e.id === targetEvent.id + 1) || targetEvent;
                     }
                 }
                 State.currentGW = targetEvent.id;
@@ -982,7 +979,7 @@ const Render = {
         listEl.innerHTML = compiledHtml;
     },
 
-    table: () => {
+table: () => {
         const tbody = document.getElementById('table-body');
         const thead = document.getElementById('table-head');
         let tbodyHtml = ''; 
@@ -994,9 +991,9 @@ const Render = {
         document.getElementById('table-title').innerText = isInactive ? "Overall Standings" : "Live Standings";
 
         if (isH2H) {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">${isInactive ? 'W-D-L' : 'Res'}</th><th class="px-2.5 py-2 text-center">Pts</th>${isInactive ? '' : '<th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th>'}</tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">${isInactive ? 'W-D-L' : 'Res'}</th><th class="px-2.5 py-2 text-center">Pts</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th></tr>`;
         } else {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th>${isInactive ? '' : '<th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th>'}</tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th></tr>`;
         }
 
         let liveH2H = {};
@@ -1065,7 +1062,7 @@ const Render = {
                             : `<td class="px-2.5 py-2.5 text-center text-xs font-bold ${resColor}">${team.gwResult}</td>`
                         }
                         <td class="px-2.5 py-2.5 text-center text-xs font-semibold text-gray-300">${team.projectedTotalFPL}</td>
-                        ${isInactive ? '' : `<td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.projectedH2HPts}</td>`}
+                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.projectedH2HPts}</td>
                     </tr>`;
             } else {
                 tbodyHtml += `
@@ -1080,7 +1077,7 @@ const Render = {
                             </div>
                         </td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
-                        ${isInactive ? '' : `<td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.liveFPLPts}</td>`}
+                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${isInactive ? team.projectedTotalFPL : team.liveFPLPts}</td>
                     </tr>`;
             }
         });
