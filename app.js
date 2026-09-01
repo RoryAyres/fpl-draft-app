@@ -322,7 +322,7 @@ const API = {
         return data;
     },
     
-refreshData: async (manual = false) => {
+    refreshData: async (manual = false) => {
         try {
             if (manual) {
                 const icon = document.getElementById('refresh-icon');
@@ -658,7 +658,7 @@ const Render = {
             
             <div class="flex gap-3 mt-4">
                 <div class="flex-1 bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 p-3 text-center flex flex-col justify-center">
-                    <h3 class="text-[10px] sm:text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Team Selection</h3>
+                    <h3 class="text-[10px] sm:text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Team Selection Deadline</h3>
                     <div id="gw-timer" class="text-xl sm:text-2xl font-extrabold text-blue-400 font-mono tracking-tight">--d --h --m --s</div>
                     <div class="text-[10px] font-medium text-gray-400 mt-1">${gwDeadlineDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
                 </div>
@@ -717,14 +717,41 @@ const Render = {
             const hl1 = (!isInactive && t1.livePoints > t2.livePoints) ? 'text-emerald-400' : 'text-gray-200';
             const hl2 = (!isInactive && t2.livePoints > t1.livePoints) ? 'text-emerald-400' : 'text-gray-200';
 
-            const t1Form = UI.renderFormSquares(State.getTeamForm(t1.id));
-            const t2Form = UI.renderFormSquares(State.getTeamForm(t2.id), true);
             const t1PrevScore = State.getLastGwScore(t1.id);
             const t2PrevScore = State.getLastGwScore(t2.id);
 
             let detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">Live lineups are not available until after the deadline passes.</div>';
             
             if (isInactive) {
+                let encountersHtml = '';
+                if (State.leagueDetails.matches) {
+                    const pastEncounters = State.leagueDetails.matches.filter(m => 
+                        m.event < State.currentGW && 
+                        m.league_entry_1_points !== null &&
+                        ((m.league_entry_1 === t1.id && m.league_entry_2 === t2.id) || 
+                         (m.league_entry_1 === t2.id && m.league_entry_2 === t1.id))
+                    ).sort((a, b) => b.event - a.event);
+
+                    if (pastEncounters.length > 0) {
+                        encountersHtml = `
+                            <div class="px-3 pb-3">
+                                <div class="text-[9px] text-gray-500 uppercase font-bold tracking-wider mb-1.5 text-center border-t border-gray-700/50 pt-2">Previous Encounters</div>
+                                ${pastEncounters.map(m => {
+                                    const t1IsTeam1 = m.league_entry_1 === t1.id;
+                                    const t1Pts = t1IsTeam1 ? m.league_entry_1_points : m.league_entry_2_points;
+                                    const t2Pts = t1IsTeam1 ? m.league_entry_2_points : m.league_entry_1_points;
+                                    const t1Win = t1Pts > t2Pts;
+                                    const t2Win = t2Pts > t1Pts;
+                                    return `<div class="flex justify-between text-xs py-0.5">
+                                        <span class="w-1/3 text-left ${t1Win ? 'text-emerald-400 font-bold' : 'text-gray-400'}">${t1Pts}</span>
+                                        <span class="w-1/3 text-center text-[10px] text-gray-500 font-medium">GW ${m.event}</span>
+                                        <span class="w-1/3 text-right ${t2Win ? 'text-emerald-400 font-bold' : 'text-gray-400'}">${t2Pts}</span>
+                                    </div>`;
+                                }).join('')}
+                            </div>`;
+                    }
+                }
+
                 detailsHtml = `
                     <div class="flex justify-between items-center p-3 text-xs text-gray-400 bg-gray-900/60">
                         <div class="text-left flex flex-col">
@@ -734,7 +761,8 @@ const Render = {
                         <div class="text-right flex flex-col">
                             <span class="font-bold text-gray-300">Last GW: ${t2PrevScore} pts</span>
                         </div>
-                    </div>`;
+                    </div>
+                    ${encountersHtml}`;
             } else {
                 const t1Lineup = State.teamEvents[t1.entry_id];
                 const t2Lineup = State.teamEvents[t2.entry_id];
@@ -829,7 +857,6 @@ const Render = {
                         <div class="flex-1 flex flex-col justify-center px-3 min-w-0">
                             <div class="text-[10px] text-gray-400 truncate">${t1Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl1}">${t1.entry_name}</div>
-                            ${isInactive ? t1Form : ''}
                         </div>
                         <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10 my-[-6px]">
                             <div class="flex items-center font-bold w-full px-1">
@@ -841,7 +868,6 @@ const Render = {
                         <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0">
                             <div class="text-[10px] text-gray-400 truncate">${t2Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl2}">${t2.entry_name}</div>
-                            ${isInactive ? t2Form : ''}
                         </div>
                     </div>
                     <div id="fixture-details-${idx}" class="hidden bg-gray-900/60 border-t border-gray-700/60 shadow-inner">
@@ -979,7 +1005,7 @@ const Render = {
         listEl.innerHTML = compiledHtml;
     },
 
-table: () => {
+    table: () => {
         const tbody = document.getElementById('table-body');
         const thead = document.getElementById('table-head');
         let tbodyHtml = ''; 
@@ -990,10 +1016,11 @@ table: () => {
         
         document.getElementById('table-title').innerText = isInactive ? "Overall Standings" : "Live Standings";
 
+        const rankTh = isInactive ? '' : '<th class="px-1.5 py-2 text-center w-5"></th>';
         if (isH2H) {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">${isInactive ? 'W-D-L' : 'Res'}</th><th class="px-2.5 py-2 text-center">Pts</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th></tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th>${rankTh}<th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">${isInactive ? 'W-D-L' : 'Res'}</th><th class="px-2.5 py-2 text-center">Pts</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th></tr>`;
         } else {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th><th class="px-1.5 py-2 text-center w-5"></th><th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th></tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th>${rankTh}<th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th></tr>`;
         }
 
         let liveH2H = {};
@@ -1039,7 +1066,7 @@ table: () => {
 
             const rowClass = 'bg-gray-800/40';
             const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
-            const teamFormHtml = UI.renderFormSquares(State.getTeamForm(team.league_entry));
+            const rankTd = isInactive ? '' : `<td class="px-1.5 py-2.5 text-center">${rankIcon}</td>`;
 
             if(isH2H) {
                 let resColor = 'text-gray-500';
@@ -1049,12 +1076,11 @@ table: () => {
                 tbodyHtml += `
                     <tr class="hover:bg-gray-700/30 transition-colors ${rowClass}">
                         <td class="px-3 py-2.5 text-center font-medium text-gray-400 text-xs">${currentRank}</td>
-                        <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
+                        ${rankTd}
                         <td class="px-3 py-2.5">
                             <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
                             <div class="flex items-center space-x-2">
                                 <div class="text-[10px] text-gray-400">${fName}</div>
-                                ${isInactive ? teamFormHtml : ''}
                             </div>
                         </td>
                         ${isInactive 
@@ -1068,12 +1094,11 @@ table: () => {
                 tbodyHtml += `
                     <tr class="hover:bg-gray-700/30 transition-colors ${rowClass}">
                         <td class="px-3 py-2.5 text-center font-medium text-gray-400 text-xs">${currentRank}</td>
-                        <td class="px-1.5 py-2.5 text-center">${rankIcon}</td>
+                        ${rankTd}
                         <td class="px-3 py-2.5">
                             <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
                             <div class="flex items-center space-x-2">
                                 <div class="text-[10px] text-gray-400">${fName}</div>
-                                ${isInactive ? teamFormHtml : ''}
                             </div>
                         </td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
