@@ -691,7 +691,7 @@ const Render = {
         return { opponent: opponentName, isHome, status, colorClass };
     },
 
-    fixtures: () => {
+fixtures: () => {
         const listEl = document.getElementById('fixtures-list');
         const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
 
@@ -719,6 +719,9 @@ const Render = {
 
             const t1PrevScore = State.getLastGwScore(t1.id);
             const t2PrevScore = State.getLastGwScore(t2.id);
+            
+            const t1FormHtml = isInactive ? UI.renderFormSquares(State.getTeamForm(t1.id)) : '';
+            const t2FormHtml = isInactive ? UI.renderFormSquares(State.getTeamForm(t2.id), true) : '';
 
             let detailsHtml = '<div class="p-3 text-center text-xs text-gray-500">Live lineups are not available until after the deadline passes.</div>';
             
@@ -850,15 +853,16 @@ const Render = {
 
             compiledHtml += `
                 <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
-                    <div class="flex items-stretch h-16 relative py-1.5">
+                    <div class="flex items-stretch min-h-[64px] relative py-2 pb-3.5">
                         <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
                         <div class="flex-1 flex flex-col justify-center px-3 min-w-0">
                             <div class="text-[10px] text-gray-400 truncate">${t1Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl1}">${t1.entry_name}</div>
+                            ${t1FormHtml}
                         </div>
-                        <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10 my-[-6px]">
+                        <div class="w-20 flex items-center justify-center bg-gray-900/40 border-x border-gray-700/50 flex-shrink-0 z-10 my-[-8px]">
                             <div class="flex items-center font-bold w-full px-1">
                                 <span class="text-base flex-1 text-right ${hl1}">${pts1}</span>
                                 <span class="text-gray-600 text-xs px-1.5">-</span>
@@ -868,6 +872,7 @@ const Render = {
                         <div class="flex-1 flex flex-col justify-center px-3 text-right min-w-0">
                             <div class="text-[10px] text-gray-400 truncate">${t2Name}</div>
                             <div class="text-xs sm:text-sm font-bold truncate ${hl2}">${t2.entry_name}</div>
+                            ${t2FormHtml}
                         </div>
                     </div>
                     <div id="fixture-details-${idx}" class="hidden bg-gray-900/60 border-t border-gray-700/60 shadow-inner">
