@@ -4,6 +4,49 @@ const CONFIG = {
     PROXY_URL: 'https://fpl-draft-app-iota.vercel.app/api/proxy?path=' 
 };
 
+const Utils = {
+    getManagerName: (teamInfo) => {
+        if (!teamInfo) return '';
+        return teamInfo.player_first_name === "Rory" ? "Rory A" : teamInfo.player_first_name;
+    },
+    processAutoSubs: (starters, bench, formation) => {
+        const hasPlayed = (stats) => stats && (stats.minutes > 0 || stats.yellow_cards > 0 || stats.red_cards > 0);
+        const isDefinitelyOut = (p) => (p.fixture.status === 'FT' || p.fixture.status === 'Live') && !hasPlayed(p.stats);
+
+        bench.forEach(sub => {
+            if (!hasPlayed(sub.stats)) return; 
+            
+            const subType = sub.static.element_type;
+            
+            for (let i = 0; i < starters.length; i++) {
+                const starter = starters[i];
+                if (starter.isSubbedOut || !isDefinitelyOut(starter)) continue;
+
+                const starterType = starter.static.element_type;
+
+                if (subType === 1 && starterType === 1) {
+                    starter.isSubbedOut = true;
+                    sub.isSubbedIn = true;
+                    break;
+                } 
+                else if (subType !== 1 && starterType !== 1) {
+                    formation[starterType]--;
+                    formation[subType]++;
+
+                    if (formation[2] >= 3 && formation[4] >= 1) {
+                        starter.isSubbedOut = true;
+                        sub.isSubbedIn = true;
+                        break;
+                    } else {
+                        formation[starterType]++;
+                        formation[subType]--;
+                    }
+                }
+            }
+        });
+    }
+};
+
 const State = {
     isUsingMockData: false,
     appPhase: 'INACTIVE',
@@ -80,40 +123,7 @@ const State = {
         let formation = { 1: 0, 2: 0, 3: 0, 4: 0 };
         starters.forEach(p => formation[p.static.element_type]++);
 
-        const hasPlayed = (stats) => stats && (stats.minutes > 0 || stats.yellow_cards > 0 || stats.red_cards > 0);
-        const isDefinitelyOut = (p) => (p.fixture.status === 'FT' || p.fixture.status === 'Live') && !hasPlayed(p.stats);
-
-        bench.forEach(sub => {
-            if (!hasPlayed(sub.stats)) return; 
-            
-            const subType = sub.static.element_type;
-            
-            for (let i = 0; i < starters.length; i++) {
-                const starter = starters[i];
-                if (starter.isSubbedOut || !isDefinitelyOut(starter)) continue;
-
-                const starterType = starter.static.element_type;
-
-                if (subType === 1 && starterType === 1) {
-                    starter.isSubbedOut = true;
-                    sub.isSubbedIn = true;
-                    break;
-                } 
-                else if (subType !== 1 && starterType !== 1) {
-                    formation[starterType]--;
-                    formation[subType]++;
-
-                    if (formation[2] >= 3 && formation[4] >= 1) {
-                        starter.isSubbedOut = true;
-                        sub.isSubbedIn = true;
-                        break;
-                    } else {
-                        formation[starterType]++;
-                        formation[subType]--;
-                    }
-                }
-            }
-        });
+        Utils.processAutoSubs(starters, bench, formation);
 
         let totalPoints = 0;
         starters.forEach(p => { if (!p.isSubbedOut) totalPoints += (p.stats?.total_points || 0); });
@@ -250,42 +260,26 @@ const UI = {
 
     formatStatBadges: (stats, elementType) => {
         if (!stats) return '';
-        let badges = [];
-        const goals = stats.goals_scored || 0;
-        const assists = stats.assists || 0;
-        const cleanSheets = (elementType === 4) ? 0 : (stats.clean_sheets || 0);
-        const yellowCards = stats.yellow_cards || 0;
-        const redCards = stats.red_cards || 0;
-        const ownGoals = stats.own_goals || 0;
-        const penaltiesSaved = stats.penalties_saved || 0;
-        const penaltiesMissed = stats.penalties_missed || 0;
-        const saves = stats.saves || 0;
-        const bonus = stats.bonus || 0;
         
         const defcons = stats.defensive_contributions || stats.defensive_contribution || 0; 
-        const savePoints = Math.floor(saves / 3);
-
         const defconThreshold = (elementType === 2 || elementType === 1) ? 10 : ((elementType === 3 || elementType === 4) ? 12 : 999);
-        const hasReachedDefcon = defcons >= defconThreshold;
-
-        for(let i=0; i<goals; i++) badges.push('⚽');
-        for(let i=0; i<assists; i++) badges.push('👟'); 
-        for(let i=0; i<cleanSheets; i++) badges.push('🛡️');
-        for(let i=0; i<penaltiesSaved; i++) badges.push('🙅🏻');
-        if(savePoints > 0) badges.push('🧤');
         
-        for(let i=0; i<yellowCards; i++) badges.push('🟨');
-        for(let i=0; i<redCards; i++) badges.push('🟥');
-        for(let i=0; i<penaltiesMissed; i++) badges.push('❌');
-        for(let i=0; i<ownGoals; i++) badges.push('⚠️');
-        if(bonus > 0) badges.push('✨');
+        const badgeMap = [
+            { emoji: '⚽', count: stats.goals_scored || 0 },
+            { emoji: '👟', count: stats.assists || 0 },
+            { emoji: '🛡️', count: elementType === 4 ? 0 : (stats.clean_sheets || 0) },
+            { emoji: '🙅🏻', count: stats.penalties_saved || 0 },
+            { emoji: '🧤', count: Math.floor((stats.saves || 0) / 3) },
+            { emoji: '🧱', count: defcons >= defconThreshold ? 1 : 0 },
+            { emoji: '🟨', count: stats.yellow_cards || 0 },
+            { emoji: '🟥', count: stats.red_cards || 0 },
+            { emoji: '❌', count: stats.penalties_missed || 0 },
+            { emoji: '⚠️', count: stats.own_goals || 0 },
+            { emoji: '✨', count: stats.bonus || 0 }
+        ];
 
-        if(hasReachedDefcon) {
-            badges.push('🧱');
-        } 
-
-        if (badges.length === 0) return '';
-        return `<span class="inline-flex items-center space-x-0.5 mx-1 text-[11px]">${badges.join('')}</span>`;
+        const badges = badgeMap.flatMap(b => Array(b.count).fill(b.emoji));
+        return badges.length > 0 ? `<span class="inline-flex items-center space-x-0.5 mx-1 text-[11px]">${badges.join('')}</span>` : '';
     }
 };
 
@@ -604,7 +598,7 @@ const Render = {
                 
                 gwTransactions.forEach(t => {
                     const team = State.entries[t.entry] || Object.values(State.entries).find(e => e.entry_id === t.entry) || Object.values(State.entries).find(e => e.id === t.entry);
-                    const fName = team?.player_first_name === "Rory" ? "Rory A" : team?.player_first_name || '';
+                    const fName = Utils.getManagerName(team);
 
                     const playerIn = State.getStaticPlayer(t.element_in);
                     const playerOut = State.getStaticPlayer(t.element_out);
@@ -691,7 +685,7 @@ const Render = {
         return { opponent: opponentName, isHome, status, colorClass };
     },
 
-fixtures: () => {
+    fixtures: () => {
         const listEl = document.getElementById('fixtures-list');
         const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
 
@@ -708,8 +702,8 @@ fixtures: () => {
             
             if (!t1 || !t2) return;
             
-            const t1Name = t1.player_first_name === "Rory" ? "Rory A" : t1.player_first_name;
-            const t2Name = t2.player_first_name === "Rory" ? "Rory A" : t2.player_first_name;
+            const t1Name = Utils.getManagerName(t1);
+            const t2Name = Utils.getManagerName(t2);
 
             const isInactive = State.appPhase === 'INACTIVE';
             const pts1 = isInactive ? '-' : t1.livePoints;
@@ -1010,7 +1004,7 @@ fixtures: () => {
         listEl.innerHTML = compiledHtml;
     },
 
-table: () => {
+    table: () => {
         const tbody = document.getElementById('table-body');
         const thead = document.getElementById('table-head');
         let tbodyHtml = ''; 
@@ -1070,7 +1064,7 @@ table: () => {
             }
 
             const rowClass = 'bg-gray-800/40';
-            const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
+            const fName = Utils.getManagerName(team.entryDetails);
             const rankTd = isInactive ? '' : `<td class="px-1.5 py-2.5 text-center">${rankIcon}</td>`;
             const teamFormHtml = UI.renderFormSquares(State.getTeamForm(team.league_entry));
 
