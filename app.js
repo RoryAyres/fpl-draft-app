@@ -1005,7 +1005,7 @@ const Render = {
         listEl.innerHTML = compiledHtml;
     },
 
-    table: () => {
+table: () => {
         const tbody = document.getElementById('table-body');
         const thead = document.getElementById('table-head');
         let tbodyHtml = ''; 
@@ -1067,6 +1067,7 @@ const Render = {
             const rowClass = 'bg-gray-800/40';
             const fName = team.entryDetails?.player_first_name === "Rory" ? "Rory A" : team.entryDetails?.player_first_name || '';
             const rankTd = isInactive ? '' : `<td class="px-1.5 py-2.5 text-center">${rankIcon}</td>`;
+            const teamFormHtml = UI.renderFormSquares(State.getTeamForm(team.league_entry));
 
             if(isH2H) {
                 let resColor = 'text-gray-500';
@@ -1081,6 +1082,7 @@ const Render = {
                             <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
                             <div class="flex items-center space-x-2">
                                 <div class="text-[10px] text-gray-400">${fName}</div>
+                                ${teamFormHtml}
                             </div>
                         </td>
                         ${isInactive 
@@ -1099,6 +1101,7 @@ const Render = {
                             <div class="text-xs font-bold text-gray-100 truncate max-w-[120px]">${team.entryDetails?.entry_name || 'Unknown'}</div>
                             <div class="flex items-center space-x-2">
                                 <div class="text-[10px] text-gray-400">${fName}</div>
+                                ${teamFormHtml}
                             </div>
                         </td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
