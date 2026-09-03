@@ -4,6 +4,11 @@ const CONFIG = {
     PROXY_URL: 'https://fpl-draft-app-iota.vercel.app/api/proxy?path=' 
 };
 
+const DOM = {
+    cache: {},
+    el: (id) => DOM.cache[id] || (DOM.cache[id] = document.getElementById(id))
+};
+
 const Utils = {
     getManagerName: (teamInfo) => {
         if (!teamInfo) return '';
@@ -135,17 +140,17 @@ const State = {
 
 const UI = {
     showLoading: (text, subtext = '') => {
-        document.getElementById('loading-overlay').classList.remove('hidden');
-        if (text) document.getElementById('loading-text').innerText = text;
-        document.getElementById('loading-subtext').innerText = subtext;
+        DOM.el('loading-overlay').classList.remove('hidden');
+        if (text) DOM.el('loading-text').innerText = text;
+        DOM.el('loading-subtext').innerText = subtext;
     },
-    hideLoading: () => document.getElementById('loading-overlay').classList.add('hidden'),
+    hideLoading: () => DOM.el('loading-overlay').classList.add('hidden'),
     showError: (msg) => {
-        document.getElementById('error-text').innerText = msg;
-        document.getElementById('error-message').classList.remove('hidden');
+        DOM.el('error-text').innerText = msg;
+        DOM.el('error-message').classList.remove('hidden');
     },
     buildNavigation: () => {
-        const nav = document.getElementById('nav-tabs');
+        const nav = DOM.el('nav-tabs');
         if (State.appPhase === 'ACTIVE') {
             nav.innerHTML = `
                 <button onclick="UI.switchTab('pl-fixtures')" id="tab-pl-fixtures" class="whitespace-nowrap py-2.5 px-4 text-xs font-semibold text-gray-400 tracking-wide transition-colors hover:text-gray-200">PL Fixtures</button>
@@ -169,11 +174,13 @@ const UI = {
     switchTab: (tabId) => {
         State.activeTab = tabId;
         document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('#nav-tabs button').forEach(el => {
+        
+        DOM.el('nav-tabs').querySelectorAll('button').forEach(el => {
             el.classList.remove('active-tab', 'text-emerald-400');
             el.classList.add('text-gray-400');
         });
-        const contentEl = document.getElementById(`content-${tabId}`);
+        
+        const contentEl = DOM.el(`content-${tabId}`);
         if(contentEl) contentEl.classList.remove('hidden');
         
         const activeBtn = document.getElementById(`tab-${tabId}`);
@@ -182,7 +189,7 @@ const UI = {
             activeBtn.classList.remove('text-gray-400');
         }
 
-        const infoContent = document.getElementById('content-info');
+        const infoContent = DOM.el('content-info');
         if (infoContent) {
             if (State.appPhase === 'INACTIVE') {
                 infoContent.innerHTML = `
@@ -319,8 +326,8 @@ const API = {
     refreshData: async (manual = false) => {
         try {
             if (manual) {
-                const icon = document.getElementById('refresh-icon');
-                icon.classList.add('animate-spin');
+                const icon = DOM.el('refresh-icon');
+                if (icon) icon.classList.add('animate-spin');
             }
             
             State.bootstrapStatic = await API.fetchVercelProxy('bootstrap-static', manual);
@@ -337,11 +344,11 @@ const API = {
                 if (now >= deadline && !targetEvent.finished) {
                     if (State.appPhase !== 'ACTIVE') phaseChanged = true;
                     State.appPhase = 'ACTIVE';
-                    document.getElementById('live-indicator').classList.remove('hidden');
+                    DOM.el('live-indicator').classList.remove('hidden');
                 } else {
                     if (State.appPhase !== 'INACTIVE') phaseChanged = true;
                     State.appPhase = 'INACTIVE';
-                    document.getElementById('live-indicator').classList.add('hidden');
+                    DOM.el('live-indicator').classList.add('hidden');
                     if (targetEvent.finished) {
                         targetEvent = eventsList.find(e => e.id === targetEvent.id + 1) || targetEvent;
                     }
@@ -349,9 +356,11 @@ const API = {
                 State.currentGW = targetEvent.id;
                 State.targetEvent = targetEvent;
                 
-                const headerGwEl = document.getElementById('header-gw-status');
-                headerGwEl.innerText = `GW ${State.currentGW}`;
-                headerGwEl.className = `border-l border-gray-700 pl-1.5 font-bold ${State.appPhase === 'ACTIVE' ? 'text-emerald-400' : 'text-gray-400'}`;
+                const headerGwEl = DOM.el('header-gw-status');
+                if (headerGwEl) {
+                    headerGwEl.innerText = `GW ${State.currentGW}`;
+                    headerGwEl.className = `border-l border-gray-700 pl-1.5 font-bold ${State.appPhase === 'ACTIVE' ? 'text-emerald-400' : 'text-gray-400'}`;
+                }
             }
 
             if (phaseChanged) {
@@ -372,12 +381,16 @@ const API = {
                 State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`, manual);
                 State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`, manual);
 
-                for (const entry of State.leagueDetails.league_entries) {
+                const teamFetchPromises = State.leagueDetails.league_entries.map(async (entry) => {
                     try {
                         const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`, manual);
                         State.teamEvents[entry.entry_id] = teamData;
-                    } catch (err) {}
-                }
+                    } catch (err) {
+                        console.warn(`Failed to fetch lineup for entry ${entry.entry_id}:`, err);
+                    }
+                });
+
+                await Promise.all(teamFetchPromises);
 
                 State.leagueDetails.league_entries.forEach(entry => {
                     const lineup = State.teamEvents[entry.entry_id];
@@ -392,11 +405,15 @@ const API = {
 
             Render.currentTab();
             if (manual) {
-                setTimeout(() => document.getElementById('refresh-icon').classList.remove('animate-spin'), 500);
+                setTimeout(() => {
+                    const icon = DOM.el('refresh-icon');
+                    if (icon) icon.classList.remove('animate-spin');
+                }, 500);
             }
         } catch (e) {
             console.error("Background refresh failed:", e);
-            if (manual) document.getElementById('refresh-icon').classList.remove('animate-spin');
+            const icon = DOM.el('refresh-icon');
+            if (manual && icon) icon.classList.remove('animate-spin');
         }
     },
     
@@ -420,7 +437,7 @@ const API = {
                     
                     if (now >= deadline && !targetEvent.finished) {
                         State.appPhase = 'ACTIVE';
-                        document.getElementById('live-indicator').classList.remove('hidden');
+                        DOM.el('live-indicator').classList.remove('hidden');
                     } else {
                         State.appPhase = 'INACTIVE';
                         if (targetEvent.finished) {
@@ -446,12 +463,16 @@ const API = {
                     State.liveScores = await API.fetchVercelProxy(`event/${State.currentGW}/live`);
                     State.plFixtures = await API.fetchVercelProxy(`fixtures/?event=${State.currentGW}`);
 
-                    for (const entry of State.leagueDetails.league_entries) {
+                    const teamFetchPromises = State.leagueDetails.league_entries.map(async (entry) => {
                         try {
                             const teamData = await API.fetchVercelProxy(`entry/${entry.entry_id}/event/${State.currentGW}`); 
                             State.teamEvents[entry.entry_id] = teamData;
-                        } catch (err) {}
-                    }
+                        } catch (err) {
+                            console.warn(`Failed to fetch lineup for entry ${entry.entry_id}:`, err);
+                        }
+                    });
+
+                    await Promise.all(teamFetchPromises);
                 }
 
             } catch (proxyError) {
@@ -461,7 +482,7 @@ const API = {
                 
                 State.isUsingMockData = true;
                 UI.showLoading('Loading Mock Data...', 'Previewing UI without live connection.');
-                document.getElementById('mock-indicator').classList.remove('hidden');
+                DOM.el('mock-indicator').classList.remove('hidden');
                 
                 State.bootstrapStatic = MockData.getBootstrap();
                 State.leagueDetails = MockData.getLeague();
@@ -479,9 +500,11 @@ const API = {
                 State.bootstrapStatic.teams.forEach(t => State.teamsData[t.id] = t);
             }
             
-            const leagueLinkEl = document.getElementById('league-name-display');
-            leagueLinkEl.innerText = State.leagueDetails?.league?.name || 'League';
-            leagueLinkEl.href = 'https://draft.premierleague.com/';
+            const leagueLinkEl = DOM.el('league-name-display');
+            if (leagueLinkEl) {
+                leagueLinkEl.innerText = State.leagueDetails?.league?.name || 'League';
+                leagueLinkEl.href = 'https://draft.premierleague.com/';
+            }
             
             if (State.leagueDetails && State.leagueDetails.league_entries) {
                 State.leagueDetails.league_entries.forEach(entry => {
@@ -489,10 +512,12 @@ const API = {
                 });
             }
 
-            const headerGwEl = document.getElementById('header-gw-status');
-            headerGwEl.innerText = `GW ${State.currentGW}`;
-            headerGwEl.className = `border-l border-gray-700 pl-1.5 font-bold ${State.appPhase === 'ACTIVE' ? 'text-emerald-400' : 'text-gray-400'}`;
-            headerGwEl.classList.remove('hidden');
+            const headerGwEl = DOM.el('header-gw-status');
+            if (headerGwEl) {
+                headerGwEl.innerText = `GW ${State.currentGW}`;
+                headerGwEl.className = `border-l border-gray-700 pl-1.5 font-bold ${State.appPhase === 'ACTIVE' ? 'text-emerald-400' : 'text-gray-400'}`;
+                headerGwEl.classList.remove('hidden');
+            }
 
             if (State.appPhase === 'ACTIVE' && State.leagueDetails && State.leagueDetails.league_entries) {
                 State.leagueDetails.league_entries.forEach(entry => {
@@ -537,7 +562,7 @@ const Render = {
 
     hub: () => {
         UI.clearCountdowns();
-        const hubContainer = document.getElementById('content-hub');
+        const hubContainer = DOM.el('content-hub');
         
         if (!State.targetEvent || !State.targetEvent.deadline_time) {
             hubContainer.innerHTML = `<div class="text-center p-4 text-xs text-gray-400 bg-gray-800 rounded-xl border border-gray-700">No upcoming events scheduled.</div>`;
@@ -686,7 +711,7 @@ const Render = {
     },
 
     fixtures: () => {
-        const listEl = document.getElementById('fixtures-list');
+        const listEl = DOM.el('fixtures-list');
         const h2hMatches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
 
         if (h2hMatches.length === 0) {
@@ -879,7 +904,7 @@ const Render = {
     },
 
     plFixtures: () => {
-        const listEl = document.getElementById('pl-fixtures-list');
+        const listEl = DOM.el('pl-fixtures-list');
         
         if (!State.plFixtures || State.plFixtures.length === 0) {
             listEl.innerHTML = '<div class="text-center p-4 text-xs text-gray-400 bg-gray-800 rounded-xl border border-gray-700">No Premier League fixtures found.</div>';
@@ -1005,15 +1030,15 @@ const Render = {
     },
 
     table: () => {
-        const tbody = document.getElementById('table-body');
-        const thead = document.getElementById('table-head');
+        const tbody = DOM.el('table-body');
+        const thead = DOM.el('table-head');
         let tbodyHtml = ''; 
 
         const matches = State.leagueDetails.matches ? State.leagueDetails.matches.filter(m => m.event == State.currentGW) : [];
         const isH2H = matches.length > 0;
         const isInactive = State.appPhase === 'INACTIVE';
         
-        document.getElementById('table-title').innerText = isInactive ? "Overall Standings" : "Live Standings";
+        DOM.el('table-title').innerText = isInactive ? "Overall Standings" : "Live Standings";
 
         const rankTh = isInactive ? '' : '<th class="px-1.5 py-2 text-center w-5"></th>';
         if (isH2H) {
@@ -1115,6 +1140,7 @@ const Render = {
 
 let touchstartY = 0;
 let touchendY = 0;
+// Note: We use document.getElementById here initially because these might be called before API.init
 const mainContainer = document.getElementById('main-scroll-container');
 const ptrEl = document.getElementById('ptr-element');
 
