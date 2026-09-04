@@ -276,13 +276,13 @@ const UI = {
             { emoji: '👟', count: stats.assists || 0 },
             { emoji: '🛡️', count: elementType === 4 ? 0 : (stats.clean_sheets || 0) },
             { emoji: '🙅🏻', count: stats.penalties_saved || 0 },
-            { emoji: '🧤', count: Math.floor((stats.saves || 0) / 3) },
+            { emoji: '🧤', count: (stats.saves || 0) >= 3 ? 1 : 0 },
             { emoji: '🧱', count: defcons >= defconThreshold ? 1 : 0 },
             { emoji: '🟨', count: stats.yellow_cards || 0 },
             { emoji: '🟥', count: stats.red_cards || 0 },
             { emoji: '❌', count: stats.penalties_missed || 0 },
             { emoji: '⚠️', count: stats.own_goals || 0 },
-            { emoji: '✨', count: stats.bonus || 0 }
+            { emoji: '✨', count: (stats.bonus || 0) > 0 ? 1 : 0 }
         ];
 
         const badges = badgeMap.flatMap(b => Array(b.count).fill(b.emoji));
@@ -1001,7 +1001,7 @@ const Render = {
 
             compiledHtml += `
                 <div class="bg-gray-800/90 rounded-xl shadow border border-gray-700/60 overflow-hidden cursor-pointer hover:bg-gray-750 transition-colors" onclick="document.getElementById('pl-fixture-details-${idx}').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')">
-                    <div class="flex items-stretch h-14 relative">
+                    <div class="flex items-stretch min-h-[64px] relative py-2 pb-3.5">
                         <div class="absolute left-1/2 transform -translate-x-1/2 bottom-0.5 text-gray-600 chevron transition-transform duration-200">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
@@ -1042,9 +1042,9 @@ const Render = {
 
         const rankTh = isInactive ? '' : '<th class="px-1.5 py-2 text-center w-5"></th>';
         if (isH2H) {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th>${rankTh}<th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">${isInactive ? 'W-D-L' : 'Res'}</th><th class="px-2.5 py-2 text-center">Pts</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">H2H</th></tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th>${rankTh}<th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">${isInactive ? 'W-D-L' : 'Res'}</th><th class="px-2.5 py-2 text-center">Pts</th><th class="px-2.5 py-2 text-center">H2H</th></tr>`;
         } else {
-            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th>${rankTh}<th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th><th class="px-2.5 py-2 text-center bg-emerald-950/40 text-emerald-400 font-bold">Live</th></tr>`;
+            thead.innerHTML = `<tr><th class="px-3 py-2 text-center w-6">#</th>${rankTh}<th class="px-3 py-2">Team</th><th class="px-2.5 py-2 text-center">Total</th><th class="px-2.5 py-2 text-center">Live</th></tr>`;
         }
 
         let liveH2H = {};
@@ -1091,7 +1091,7 @@ const Render = {
             const rowClass = 'bg-gray-800/40';
             const fName = Utils.getManagerName(team.entryDetails);
             const rankTd = isInactive ? '' : `<td class="px-1.5 py-2.5 text-center">${rankIcon}</td>`;
-            const teamFormHtml = UI.renderFormSquares(State.getTeamForm(team.league_entry));
+            const teamFormHtml = isInactive ? UI.renderFormSquares(State.getTeamForm(team.league_entry)) : '';
 
             if(isH2H) {
                 let resColor = 'text-gray-500';
@@ -1114,7 +1114,7 @@ const Render = {
                             : `<td class="px-2.5 py-2.5 text-center text-xs font-bold ${resColor}">${team.gwResult}</td>`
                         }
                         <td class="px-2.5 py-2.5 text-center text-xs font-semibold text-gray-300">${team.projectedTotalFPL}</td>
-                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${team.projectedH2HPts}</td>
+                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-gray-200">${team.projectedH2HPts}</td>
                     </tr>`;
             } else {
                 tbodyHtml += `
@@ -1129,7 +1129,7 @@ const Render = {
                             </div>
                         </td>
                         <td class="px-2.5 py-2.5 text-center text-xs text-gray-300">${team.projectedTotalFPL}</td>
-                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-emerald-400 bg-emerald-950/30">${isInactive ? team.projectedTotalFPL : team.liveFPLPts}</td>
+                        <td class="px-2.5 py-2.5 text-center text-xs font-bold text-gray-200">${isInactive ? team.projectedTotalFPL : team.liveFPLPts}</td>
                     </tr>`;
             }
         });
@@ -1140,7 +1140,6 @@ const Render = {
 
 let touchstartY = 0;
 let touchendY = 0;
-// Note: We use document.getElementById here initially because these might be called before API.init
 const mainContainer = document.getElementById('main-scroll-container');
 const ptrEl = document.getElementById('ptr-element');
 
