@@ -603,73 +603,79 @@ const Render = {
                     <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
                 </a>
             </div>`;
+        }
 
-            const txData = State.transactions?.transactions || (Array.isArray(State.transactions) ? State.transactions : []);
+        const txData = State.transactions?.transactions || (Array.isArray(State.transactions) ? State.transactions : []);
+        
+        const gwTransactions = txData
+            .filter(t => t.event === State.targetEvent.id && t.result === 'a')
+            .sort((a, b) => {
+                if (a.kind === 't' && b.kind !== 't') return -1;
+                if (a.kind !== 't' && b.kind === 't') return 1;
+                const indexA = a.index !== undefined && a.index !== null ? a.index : 99999;
+                const indexB = b.index !== undefined && b.index !== null ? b.index : 99999;
+                if (indexA !== indexB) return indexA - indexB;
+                return new Date(a.added_time) - new Date(b.added_time);
+            });
+
+        const visibleTransactions = hasWaiverPassed 
+            ? gwTransactions 
+            : gwTransactions.filter(t => t.kind === 't');
+
+        if (visibleTransactions.length > 0) {
+            transactionsHtml = `
+            <div class="mt-4">
+                <h3 class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2 px-1">Processed Transactions</h3>
+                <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden divide-y divide-gray-700/40">`;
             
-            const gwTransactions = txData
-                .filter(t => t.event === State.targetEvent.id && t.result === 'a')
-                .sort((a, b) => {
-                    const indexA = a.index !== undefined && a.index !== null ? a.index : 99999;
-                    const indexB = b.index !== undefined && b.index !== null ? b.index : 99999;
-                    if (indexA !== indexB) return indexA - indexB;
-                    return new Date(a.added_time) - new Date(b.added_time);
-                });
+            visibleTransactions.forEach(t => {
+                const team = State.entries[t.entry] || Object.values(State.entries).find(e => e.entry_id === t.entry) || Object.values(State.entries).find(e => e.id === t.entry);
+                const fName = Utils.getManagerName(team);
 
-            if (gwTransactions.length > 0) {
-                transactionsHtml = `
-                <div class="mt-4">
-                    <h3 class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2 px-1">Processed Transactions</h3>
-                    <div class="bg-gray-800/90 rounded-xl shadow-lg border border-gray-700/60 overflow-hidden divide-y divide-gray-700/40">`;
+                const playerIn = State.getStaticPlayer(t.element_in);
+                const playerOut = State.getStaticPlayer(t.element_out);
                 
-                gwTransactions.forEach(t => {
-                    const team = State.entries[t.entry] || Object.values(State.entries).find(e => e.entry_id === t.entry) || Object.values(State.entries).find(e => e.id === t.entry);
-                    const fName = Utils.getManagerName(team);
-
-                    const playerIn = State.getStaticPlayer(t.element_in);
-                    const playerOut = State.getStaticPlayer(t.element_out);
-                    
-                    const inTeam = State.teamsData[playerIn.team]?.short_name || 'UNK';
-                    const inPos = UI.getPosName(playerIn.element_type);
-                    const outTeam = State.teamsData[playerOut.team]?.short_name || 'UNK';
-                    const outPos = UI.getPosName(playerOut.element_type);
-                    
-                    let kindBadge = '';
-                    if (t.kind === 'w') {
-                        kindBadge = `<span class="bg-purple-900/50 text-purple-300 border border-purple-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Waiver">W</span>`;
-                    } else if (t.kind === 'f') {
-                        kindBadge = `<span class="bg-amber-900/50 text-amber-300 border border-amber-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Free Agent">FA</span>`;
-                    } else {
-                        kindBadge = `<span class="bg-blue-900/50 text-blue-300 border border-blue-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Trade">T</span>`;
-                    }
-
-                    transactionsHtml += `
-                    <div class="p-3 flex items-center text-xs hover:bg-gray-750 transition-colors">
-                        <div class="w-8 flex-shrink-0 flex justify-center mr-2">
-                            ${kindBadge}
-                        </div>
-                        <div class="w-1/3 flex flex-col justify-center pr-2 min-w-0">
-                            <div class="font-bold text-gray-200 truncate">${team?.entry_name || 'Unknown'}</div>
-                            <div class="text-[10px] text-gray-400 mt-0.5 truncate">${fName}</div>
-                        </div>
-                        <div class="flex flex-col flex-1 pl-3 border-l border-gray-700/50 min-w-0">
-                            <div class="flex items-center text-gray-200 font-semibold truncate">
-                                <span class="text-[10px] mr-1.5 flex-shrink-0" title="In">➡️</span>
-                                <span class="text-[8px] font-bold ${UI.getPosClass(playerIn.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${inPos}</span>
-                                <span class="truncate">${playerIn.web_name || 'Unknown'} <span class="font-normal text-gray-400">(${inTeam})</span></span>
-                            </div>
-                            <div class="flex items-center text-gray-400 font-semibold truncate mt-1">
-                                <span class="text-[10px] mr-1.5 flex-shrink-0" title="Out">⬅️</span>
-                                <span class="text-[8px] font-bold ${UI.getPosClass(playerOut.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0 opacity-70">${outPos}</span>
-                                <span class="truncate">${playerOut.web_name || 'Unknown'} <span class="font-normal text-gray-500">(${outTeam})</span></span>
-                            </div>
-                        </div>
-                    </div>`;
-                });
+                const inTeam = State.teamsData[playerIn.team]?.short_name || 'UNK';
+                const inPos = UI.getPosName(playerIn.element_type);
+                const outTeam = State.teamsData[playerOut.team]?.short_name || 'UNK';
+                const outPos = UI.getPosName(playerOut.element_type);
                 
-                transactionsHtml += `</div></div>`;
-            } else {
-                transactionsHtml = `<div class="mt-4 text-center text-xs text-gray-500 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">No successful transactions processed yet.</div>`;
-            }
+                let kindBadge = '';
+                if (t.kind === 'w') {
+                    kindBadge = `<span class="bg-purple-900/50 text-purple-300 border border-purple-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Waiver">W</span>`;
+                } else if (t.kind === 'f') {
+                    kindBadge = `<span class="bg-amber-900/50 text-amber-300 border border-amber-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Free Agent">FA</span>`;
+                } else {
+                    kindBadge = `<span class="bg-blue-900/50 text-blue-300 border border-blue-700/50 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase" title="Trade">T</span>`;
+                }
+
+                transactionsHtml += `
+                <div class="p-3 flex items-center text-xs hover:bg-gray-750 transition-colors">
+                    <div class="w-8 flex-shrink-0 flex justify-center mr-2">
+                        ${kindBadge}
+                    </div>
+                    <div class="w-1/3 flex flex-col justify-center pr-2 min-w-0">
+                        <div class="font-bold text-gray-200 truncate">${team?.entry_name || 'Unknown'}</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5 truncate">${fName}</div>
+                    </div>
+                    <div class="flex flex-col flex-1 pl-3 border-l border-gray-700/50 min-w-0">
+                        <div class="flex items-center text-gray-200 font-semibold truncate">
+                            <span class="text-[10px] mr-1.5 flex-shrink-0" title="In">➡️</span>
+                            <span class="text-[8px] font-bold ${UI.getPosClass(playerIn.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0">${inPos}</span>
+                            <span class="truncate">${playerIn.web_name || 'Unknown'} <span class="font-normal text-gray-400">(${inTeam})</span></span>
+                        </div>
+                        <div class="flex items-center text-gray-400 font-semibold truncate mt-1">
+                            <span class="text-[10px] mr-1.5 flex-shrink-0" title="Out">⬅️</span>
+                            <span class="text-[8px] font-bold ${UI.getPosClass(playerOut.element_type)} px-0.5 rounded mr-1.5 flex-shrink-0 opacity-70">${outPos}</span>
+                            <span class="truncate">${playerOut.web_name || 'Unknown'} <span class="font-normal text-gray-500">(${outTeam})</span></span>
+                        </div>
+                    </div>
+                </div>`;
+            });
+            
+            transactionsHtml += `</div></div>`;
+        } else if (hasWaiverPassed) {
+            transactionsHtml = `<div class="mt-4 text-center text-xs text-gray-500 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">No successful transactions processed yet.</div>`;
         }
 
         hubContainer.innerHTML = `
